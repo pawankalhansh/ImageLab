@@ -70,10 +70,37 @@ const App = {
     ],
 
     init() {
+        this.setupTheme();
         this.setupNav();
         this.setupRouter();
         window.addEventListener('hashchange', () => this.route());
         this.route();
+    },
+
+    setupTheme() {
+        const btn = document.getElementById('themeToggleBtn');
+        if (!btn) return;
+
+        const currentTheme = localStorage.getItem('theme') || 'dark';
+        if (currentTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            btn.textContent = '🌙';
+        } else {
+            btn.textContent = '☀️';
+        }
+
+        btn.addEventListener('click', () => {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'dark');
+                btn.textContent = '☀️';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                btn.textContent = '🌙';
+            }
+        });
     },
 
     setupNav() {
