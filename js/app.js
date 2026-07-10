@@ -62,17 +62,6 @@ const App = {
             icon: '🌐', color: '#FFD400',
             desc: 'Convert HTML & CSS code to PNG or JPG images instantly.'
         },
-        {
-            id: 'remove-bg', name: 'Remove Background', category: 'optimize',
-            icon: '✂️', color: '#8FBC5D',
-            desc: 'AI-powered background removal. Runs entirely in your browser.',
-            badge: 'AI'
-        },
-        {
-            id: 'upscale', name: 'Upscale Image', category: 'optimize',
-            icon: '🔍', color: '#8FBC5D',
-            desc: 'Enlarge your images 2x or 4x with enhanced quality and sharpening.'
-        }
     ],
 
     init() {
