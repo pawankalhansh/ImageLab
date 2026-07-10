@@ -24,9 +24,9 @@ const UpscaleTool = {
                             
                             <div class="control-group mt-16">
                                 <div class="control-label">Scale Factor</div>
-                                <div class="toggle-group w-full mt-8">
-                                    <button class="toggle-btn active" data-scale="2">2x</button>
-                                    <button class="toggle-btn" data-scale="4">4x</button>
+                                <div class="options-grid w-full mt-8">
+                                    <button class="preset-btn active" data-scale="2">2x</button>
+                                    <button class="preset-btn" data-scale="4">4x</button>
                                 </div>
                             </div>
 
@@ -101,9 +101,9 @@ const UpscaleTool = {
         });
 
         // Toggle scale factor
-        document.querySelectorAll('#upscale-workspace .toggle-btn').forEach(btn => {
+        document.querySelectorAll('#upscale-workspace .preset-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('#upscale-workspace .toggle-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#upscale-workspace .preset-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 this.scaleFactor = parseInt(e.target.dataset.scale);
                 this.updateInfo();
