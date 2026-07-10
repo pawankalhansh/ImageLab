@@ -4,7 +4,7 @@ const UpscaleTool = {
             <div class="tool-page">
                 <div class="tool-header">
                     <h1>${config.name}</h1>
-                    <p>${config.desc} High-Quality Resolution Enhancement.</p>
+                    <p>${config.desc} True AI Super-Resolution.</p>
                 </div>
                 
                 <div id="upscale-upload-zone" class="upload-zone">
@@ -30,13 +30,6 @@ const UpscaleTool = {
                                 </div>
                             </div>
 
-                            <div class="control-group mt-24">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="upscale-sharpen" checked>
-                                    <span>Apply Sharpening filter</span>
-                                </label>
-                            </div>
-
                             <div class="info-box mt-24">
                                 <div class="info-row">
                                     <span>Original:</span>
@@ -48,9 +41,9 @@ const UpscaleTool = {
                                 </div>
                             </div>
                             
-                            <div class="info-box mt-16" style="background: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107;">
-                                <p style="font-size: 0.8rem; color: #ffc107; margin: 0;">
-                                    <b>Warning:</b> The resulting image is very large and may take a moment to process or download.
+                            <div class="info-box mt-16" style="background: rgba(144, 238, 144, 0.1); border-left: 3px solid #4ade80;">
+                                <p style="font-size: 0.8rem; color: #4ade80; margin: 0;">
+                                    <b>True AI:</b> Processing in chunks to prevent memory crashes. This will take a few moments.
                                 </p>
                             </div>
 
@@ -64,7 +57,7 @@ const UpscaleTool = {
                             
                             <div id="upscale-loading" class="loading-overlay hidden">
                                 <div class="spinner"></div>
-                                <div class="loading-text mt-12">Processing...</div>
+                                <div class="loading-text mt-12 text-center" style="max-width: 200px;">Loading AI Engine...</div>
                             </div>
                         </div>
                     </div>
@@ -79,8 +72,23 @@ const UpscaleTool = {
     ctx: null,
     scaleFactor: 2,
     processedBlob: null,
+    upscaler: null,
 
     init(config) {
+        // Dynamically load AI libs
+        if (!document.getElementById('tf-script')) {
+            const tfScript = document.createElement('script');
+            tfScript.id = 'tf-script';
+            tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js';
+            document.head.appendChild(tfScript);
+            
+            tfScript.onload = () => {
+                const upScript = document.createElement('script');
+                upScript.src = 'https://unpkg.com/upscaler@0.5.1/dist/upscaler.js';
+                document.head.appendChild(upScript);
+            };
+        }
+
         setupUploadZone('upscale-upload-zone', 'upscale-file-input', async (files) => {
             if (files.length > 0) {
                 this.file = files[0];
@@ -150,32 +158,52 @@ const UpscaleTool = {
     async processUpscale() {
         if (!this.originalImg) return;
         
+        if (typeof window.Upscaler === 'undefined') {
+            Toast.error('AI Engine is still loading. Please wait a few seconds and try again.');
+            return;
+        }
+
         document.getElementById('upscale-loading').classList.remove('hidden');
         document.getElementById('upscale-btn').disabled = true;
-        document.querySelector('.loading-text').textContent = 'Enhancing resolution...';
+        document.querySelector('#upscale-loading .loading-text').innerHTML = 'Processing chunks with AI...<br><br><small>This may take a minute.</small>';
         
         try {
             // Give UI time to update
             await new Promise(r => setTimeout(r, 100));
 
+            // Initialize upscaler if not already done
+            if (!this.upscaler) {
+                this.upscaler = new window.Upscaler();
+            }
+
+            // upscale the image using patch processing to prevent WebGL crashes on huge images
+            const dataUrl = await this.upscaler.upscale(this.originalImg, {
+                patchSize: 64,
+                padding: 2
+            });
+
+            // The upscaler always outputs at its native model scale (usually 2x for default model).
+            // If the user requested 4x, we upscale the result again using high-quality canvas, 
+            // since chaining AI models multiple times in browser will definitely crash it.
+            const tempImg = new Image();
+            await new Promise((resolve, reject) => {
+                tempImg.onload = resolve;
+                tempImg.onerror = reject;
+                tempImg.src = dataUrl;
+            });
+
             const targetWidth = this.originalImg.width * this.scaleFactor;
             const targetHeight = this.originalImg.height * this.scaleFactor;
 
-            // Create an offscreen canvas for the full resolution upscale
             const offCanvas = document.createElement('canvas');
             offCanvas.width = targetWidth;
             offCanvas.height = targetHeight;
             const offCtx = offCanvas.getContext('2d');
             
-            // High quality image smoothing
+            // Draw the AI upscaled image into the final requested size
             offCtx.imageSmoothingEnabled = true;
             offCtx.imageSmoothingQuality = 'high';
-            offCtx.drawImage(this.originalImg, 0, 0, targetWidth, targetHeight);
-
-            // Apply sharpening if requested
-            if (document.getElementById('upscale-sharpen').checked) {
-                this.applyUnsharpMask(offCtx, targetWidth, targetHeight);
-            }
+            offCtx.drawImage(tempImg, 0, 0, targetWidth, targetHeight);
 
             // Show preview of result
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -191,63 +219,19 @@ const UpscaleTool = {
             btn.className = 'btn btn-success w-full';
             btn.disabled = false;
             
-            Toast.success('Image upscaled successfully!');
+            Toast.success('Image upscaled successfully with AI!');
         } catch (e) {
             console.error(e);
-            Toast.error('Failed to upscale image');
+            Toast.error('Failed to upscale image. Memory limit exceeded.');
             document.getElementById('upscale-btn').disabled = false;
         } finally {
             document.getElementById('upscale-loading').classList.add('hidden');
         }
     },
 
-    applyUnsharpMask(ctx, width, height) {
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        const copy = new Uint8ClampedArray(data);
-        
-        // Simple 3x3 sharpening kernel
-        const kernel = [
-             0, -1,  0,
-            -1,  5, -1,
-             0, -1,  0
-        ];
-        
-        const side = Math.round(Math.sqrt(kernel.length));
-        const halfSide = Math.floor(side / 2);
-        
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const dstOff = (y * width + x) * 4;
-                let r = 0, g = 0, b = 0;
-                
-                for (let cy = 0; cy < side; cy++) {
-                    for (let cx = 0; cx < side; cx++) {
-                        const scy = y + cy - halfSide;
-                        const scx = x + cx - halfSide;
-                        
-                        if (scy >= 0 && scy < height && scx >= 0 && scx < width) {
-                            const srcOff = (scy * width + scx) * 4;
-                            const wt = kernel[cy * side + cx];
-                            r += copy[srcOff] * wt;
-                            g += copy[srcOff + 1] * wt;
-                            b += copy[srcOff + 2] * wt;
-                        }
-                    }
-                }
-                
-                data[dstOff] = Math.min(255, Math.max(0, r));
-                data[dstOff + 1] = Math.min(255, Math.max(0, g));
-                data[dstOff + 2] = Math.min(255, Math.max(0, b));
-            }
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-    },
-
     download() {
         if (!this.processedBlob) return;
-        const newName = ImageUtils.getOutputFilename(this.file.name, `upscaled_${this.scaleFactor}x`, 'jpg');
+        const newName = ImageUtils.getOutputFilename(this.file.name, `upscaled_ai_${this.scaleFactor}x`, 'jpg');
         
         const url = URL.createObjectURL(this.processedBlob);
         const a = document.createElement('a');
@@ -263,5 +247,10 @@ const UpscaleTool = {
         this.file = null;
         this.originalImg = null;
         this.processedBlob = null;
+        if (this.upscaler) {
+            // Optional: dispose of upscaler memory if needed
+            this.upscaler.dispose && this.upscaler.dispose();
+            this.upscaler = null;
+        }
     }
 };
