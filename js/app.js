@@ -132,9 +132,7 @@ const App = {
             'meme': MemeTool,
             'blur': BlurTool,
             'html-to-image': HtmlToImageTool,
-            'jpg-to-pdf': JpgToPdfTool,
-            'remove-bg': RemoveBgTool,
-            'upscale': UpscaleTool
+            'jpg-to-pdf': JpgToPdfTool
         };
     },
 
