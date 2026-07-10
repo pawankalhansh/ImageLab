@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageLab — Free Online Image Editor</title>
+    <meta name="description" content="ImageLab is your personal image toolkit. Compress, resize, crop, convert, watermark, and edit images — all in your browser, forever free.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Header / Navigation -->
+    <header class="header" id="header">
+        <nav class="nav">
+            <a href="#home" class="logo" id="logo">
+                <span class="logo-icon">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <rect width="32" height="32" rx="8" fill="url(#logoGrad)"/>
+                        <path d="M8 22L12.5 15L16 19.5L20 14L24 22H8Z" fill="white" opacity="0.9"/>
+                        <circle cx="12" cy="12" r="2.5" fill="white" opacity="0.9"/>
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                                <stop stop-color="#7c3aed"/>
+                                <stop offset="1" stop-color="#06b6d4"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </span>
+                <span class="logo-text">Image<span class="logo-accent">Lab</span></span>
+            </a>
+            <div class="nav-tools" id="navTools">
+                <button class="nav-tools-btn" id="navToolsBtn">
+                    All Tools <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+                </button>
+                <div class="nav-dropdown" id="navDropdown">
+                    <div class="nav-dropdown-grid">
+                        <div class="nav-dropdown-col">
+                            <div class="nav-dropdown-title">Optimize</div>
+                            <a href="#compress" class="nav-dropdown-item" data-tool="compress">
+                                <span class="ndi-icon" style="background:#8FBC5D;">📦</span> Compress IMAGE
+                            </a>
+                            <a href="#upscale" class="nav-dropdown-item" data-tool="upscale">
+                                <span class="ndi-icon" style="background:#8FBC5D;">🔍</span> Upscale Image
+                            </a>
+                            <a href="#remove-bg" class="nav-dropdown-item" data-tool="remove-bg">
+                                <span class="ndi-icon" style="background:#8FBC5D;">✂️</span> Remove Background
+                            </a>
+                        </div>
+                        <div class="nav-dropdown-col">
+                            <div class="nav-dropdown-title">Edit</div>
+                            <a href="#resize" class="nav-dropdown-item" data-tool="resize">
+                                <span class="ndi-icon" style="background:#3CB6E2;">📐</span> Resize IMAGE
+                            </a>
+                            <a href="#crop" class="nav-dropdown-item" data-tool="crop">
+                                <span class="ndi-icon" style="background:#3CB6E2;">✂️</span> Crop IMAGE
+                            </a>
+                            <a href="#rotate" class="nav-dropdown-item" data-tool="rotate">
+                                <span class="ndi-icon" style="background:#3CB6E2;">🔄</span> Rotate & Flip
+                            </a>
+                        </div>
+                        <div class="nav-dropdown-col">
+                            <div class="nav-dropdown-title">Convert</div>
+                            <a href="#convert-to-jpg" class="nav-dropdown-item" data-tool="convert-to-jpg">
+                                <span class="ndi-icon" style="background:#FFD400;">🔄</span> Convert to JPG
+                            </a>
+                            <a href="#convert-from-jpg" class="nav-dropdown-item" data-tool="convert-from-jpg">
+                                <span class="ndi-icon" style="background:#FFD400;">🖼️</span> Convert from JPG
+                            </a>
+                            <a href="#html-to-image" class="nav-dropdown-item" data-tool="html-to-image">
+                                <span class="ndi-icon" style="background:#FFD400;">🌐</span> HTML to Image
+                            </a>
+                        </div>
+                        <div class="nav-dropdown-col">
+                            <div class="nav-dropdown-title">Create</div>
+                            <a href="#filters" class="nav-dropdown-item" data-tool="filters">
+                                <span class="ndi-icon" style="background:#AB6993;">🎨</span> Photo Filters
+                            </a>
+                            <a href="#meme" class="nav-dropdown-item" data-tool="meme">
+                                <span class="ndi-icon" style="background:#AB6993;">😂</span> Meme Generator
+                            </a>
+                        </div>
+                        <div class="nav-dropdown-col">
+                            <div class="nav-dropdown-title">Security</div>
+                            <a href="#watermark" class="nav-dropdown-item" data-tool="watermark">
+                                <span class="ndi-icon" style="background:#4A7AAB;">💧</span> Watermark IMAGE
+                            </a>
+                            <a href="#blur" class="nav-dropdown-item" data-tool="blur">
+                                <span class="ndi-icon" style="background:#4A7AAB;">🔒</span> Blur Area
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+                <span></span><span></span><span></span>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu-content">
+            <a href="#compress" class="mobile-menu-item">Compress IMAGE</a>
+            <a href="#resize" class="mobile-menu-item">Resize IMAGE</a>
+            <a href="#crop" class="mobile-menu-item">Crop IMAGE</a>
+            <a href="#convert-to-jpg" class="mobile-menu-item">Convert to JPG</a>
+            <a href="#convert-from-jpg" class="mobile-menu-item">Convert from JPG</a>
+            <a href="#rotate" class="mobile-menu-item">Rotate & Flip</a>
+            <a href="#filters" class="mobile-menu-item">Photo Filters</a>
+            <a href="#watermark" class="mobile-menu-item">Watermark IMAGE</a>
+            <a href="#meme" class="mobile-menu-item">Meme Generator</a>
+            <a href="#blur" class="mobile-menu-item">Blur Area</a>
+            <a href="#html-to-image" class="mobile-menu-item">HTML to Image</a>
+            <a href="#remove-bg" class="mobile-menu-item">Remove Background</a>
+            <a href="#upscale" class="mobile-menu-item">Upscale Image</a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main" id="main">
+        <!-- Pages are rendered here by the router -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer" id="footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <span class="logo-text">Image<span class="logo-accent">Lab</span></span>
+                <p class="footer-desc">Your personal image toolkit. Edit images in your browser, forever free.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <div class="footer-col-title">Optimize</div>
+                    <a href="#compress">Compress IMAGE</a>
+                    <a href="#upscale">Upscale Image</a>
+                    <a href="#remove-bg">Remove Background</a>
+                </div>
+                <div class="footer-col">
+                    <div class="footer-col-title">Edit</div>
+                    <a href="#resize">Resize IMAGE</a>
+                    <a href="#crop">Crop IMAGE</a>
+                    <a href="#rotate">Rotate & Flip</a>
+                </div>
+                <div class="footer-col">
+                    <div class="footer-col-title">Convert</div>
+                    <a href="#convert-to-jpg">Convert to JPG</a>
+                    <a href="#convert-from-jpg">Convert from JPG</a>
+                    <a href="#html-to-image">HTML to Image</a>
+                </div>
+                <div class="footer-col">
+                    <div class="footer-col-title">Create</div>
+                    <a href="#filters">Photo Filters</a>
+                    <a href="#meme">Meme Generator</a>
+                    <a href="#watermark">Watermark IMAGE</a>
+                    <a href="#blur">Blur Area</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2025 ImageLab. All processing happens in your browser. No files are uploaded.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/tools/compress.js"></script>
+    <script src="js/tools/resize.js"></script>
+    <script src="js/tools/crop.js"></script>
+    <script src="js/tools/convertToJpg.js"></script>
+    <script src="js/tools/convertFromJpg.js"></script>
+    <script src="js/tools/rotate.js"></script>
+    <script src="js/tools/filters.js"></script>
+    <script src="js/tools/watermark.js"></script>
+    <script src="js/tools/meme.js"></script>
+    <script src="js/tools/blur.js"></script>
+    <script src="js/tools/htmlToImage.js"></script>
+    <script src="js/tools/removeBg.js"></script>
+    <script src="js/tools/upscale.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
