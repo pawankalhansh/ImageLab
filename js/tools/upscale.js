@@ -75,20 +75,6 @@ const UpscaleTool = {
     upscaler: null,
 
     init(config) {
-        // Dynamically load AI libs
-        if (!document.getElementById('tf-script')) {
-            const tfScript = document.createElement('script');
-            tfScript.id = 'tf-script';
-            tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js';
-            document.head.appendChild(tfScript);
-            
-            tfScript.onload = () => {
-                const upScript = document.createElement('script');
-                upScript.src = 'https://unpkg.com/upscaler@0.5.1/dist/upscaler.js';
-                document.head.appendChild(upScript);
-            };
-        }
-
         setupUploadZone('upscale-upload-zone', 'upscale-file-input', async (files) => {
             if (files.length > 0) {
                 this.file = files[0];
@@ -158,11 +144,6 @@ const UpscaleTool = {
     async processUpscale() {
         if (!this.originalImg) return;
         
-        if (typeof window.Upscaler === 'undefined') {
-            Toast.error('AI Engine is still loading. Please wait a few seconds and try again.');
-            return;
-        }
-
         document.getElementById('upscale-loading').classList.remove('hidden');
         document.getElementById('upscale-btn').disabled = true;
         document.querySelector('#upscale-loading .loading-text').innerHTML = 'Processing chunks with AI...<br><br><small>This may take a minute.</small>';
@@ -173,7 +154,9 @@ const UpscaleTool = {
 
             // Initialize upscaler if not already done
             if (!this.upscaler) {
-                this.upscaler = new window.Upscaler();
+                const module = await import('https://esm.sh/upscaler@0.5.1');
+                const Upscaler = module.default;
+                this.upscaler = new Upscaler();
             }
 
             // upscale the image using patch processing to prevent WebGL crashes on huge images
