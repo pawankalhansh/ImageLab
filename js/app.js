@@ -115,9 +115,7 @@ const App = {
             'watermark': WatermarkTool,
             'meme': MemeTool,
             'blur': BlurTool,
-            'html-to-image': HtmlToImageTool,
-            'remove-bg': RemoveBgTool,
-            'upscale': UpscaleTool
+            'html-to-image': HtmlToImageTool
         };
     },
 
