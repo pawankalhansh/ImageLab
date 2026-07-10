@@ -4,7 +4,7 @@ const RemoveBgTool = {
             <div class="tool-page">
                 <div class="tool-header">
                     <h1>${config.name}</h1>
-                    <p>${config.desc} True AI Subject Segmentation.</p>
+                    <p>State-of-the-art background removal using RMBG-1.4. Runs entirely in your browser.</p>
                 </div>
                 
                 <div id="rbg-upload-zone" class="upload-zone">
@@ -21,23 +21,31 @@ const RemoveBgTool = {
                     <div class="tool-layout">
                         <div class="controls-panel">
                             <h3>Background Removal</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
-                                Automatically detects the main subject and removes the background using a local AI model.
+                            <p class="text-slate-400 mt-8 text-sm">
+                                Automatically detects the main subject and removes the background using a highly accurate local AI model (RMBG-1.4).
                             </p>
+
+                            <div class="info-box mt-16" style="background: rgba(144, 238, 144, 0.1); border-left: 3px solid #4ade80;">
+                                <p style="font-size: 0.8rem; color: #4ade80; margin: 0;" id="rbg-model-status">
+                                    <b>Note:</b> The AI model will be downloaded on first run (approx ~170MB). This may take a few minutes.
+                                </p>
+                            </div>
                             
                             <div class="actions-bar mt-24">
-                                <button id="rbg-btn" class="btn btn-primary w-full mb-12">Remove Background</button>
-                                <button id="rbg-reset" class="btn btn-secondary w-full mb-12">Reset Image</button>
-                                <button id="rbg-download" class="btn btn-success w-full" style="display: none;">Download PNG</button>
+                                <button id="rbg-reset-btn" class="btn btn-outline w-full mb-12">Reset Image</button>
+                                <button id="rbg-download-btn" class="btn btn-success w-full" disabled>Download PNG</button>
                             </div>
                         </div>
 
-                        <div class="preview-container flex-col" style="position: relative; background-image: linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #444;">
-                            <canvas id="rbg-canvas" style="max-height: 500px; display: none;"></canvas>
+                        <div class="preview-container">
+                            <canvas id="rbg-canvas"></canvas>
                             
                             <div id="rbg-loading" class="loading-overlay hidden">
                                 <div class="spinner"></div>
-                                <div class="loading-text mt-12">Processing...</div>
+                                <div class="loading-text mt-12 text-center" style="max-width: 250px;">
+                                    <div id="rbg-status-title" class="font-bold">Loading AI Engine...</div>
+                                    <div id="rbg-progress-text" class="text-sm mt-4 text-slate-300">Preparing...</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -51,6 +59,7 @@ const RemoveBgTool = {
     canvas: null,
     ctx: null,
     processedBlob: null,
+    segmenter: null,
 
     init(config) {
         setupUploadZone('rbg-upload-zone', 'rbg-file-input', async (files) => {
@@ -63,82 +72,140 @@ const RemoveBgTool = {
                     
                     document.getElementById('rbg-upload-zone').classList.add('hidden');
                     document.getElementById('rbg-workspace').classList.add('active');
-                    this.canvas.style.display = 'block';
                     
-                    this.reset();
+                    this.drawPreview(this.originalImg);
+                    this.processBackground();
                 } catch (e) {
                     Toast.error('Failed to load image');
                 }
             }
         });
 
-        // Dynamically load imgly background removal via ES module
-        if (!document.getElementById('imgly-script')) {
-            const script = document.createElement('script');
-            script.id = 'imgly-script';
-            script.type = 'module';
-            script.textContent = `
-                import imglyRemoveBackground from 'https://esm.sh/@imgly/background-removal@1.4.3';
-                window.imglyRemoveBackground = imglyRemoveBackground;
-            `;
-            document.head.appendChild(script);
-        }
+        document.getElementById('rbg-reset-btn').addEventListener('click', () => {
+            this.processedBlob = null;
+            document.getElementById('rbg-download-btn').disabled = true;
+            document.getElementById('rbg-workspace').classList.remove('active');
+            document.getElementById('rbg-upload-zone').classList.remove('hidden');
+            document.getElementById('rbg-file-input').value = '';
+        });
 
-        document.getElementById('rbg-btn').addEventListener('click', () => this.processRemoveBg());
-        document.getElementById('rbg-reset').addEventListener('click', () => this.reset());
-        document.getElementById('rbg-download').addEventListener('click', () => this.download());
+        document.getElementById('rbg-download-btn').addEventListener('click', () => {
+            if (this.processedBlob) {
+                this.download();
+            }
+        });
     },
 
-    reset() {
-        if (!this.originalImg) return;
-        this.canvas.width = this.originalImg.width;
-        this.canvas.height = this.originalImg.height;
-        this.ctx.drawImage(this.originalImg, 0, 0);
-        this.processedBlob = null;
-        document.getElementById('rbg-download').style.display = 'none';
-        document.getElementById('rbg-btn').style.display = 'block';
-    },
-
-    async processRemoveBg() {
-        if (!this.file) return;
+    drawPreview(img) {
+        const maxSize = 800;
+        let w = img.width;
+        let h = img.height;
         
-        document.getElementById('rbg-loading').classList.remove('hidden');
-        document.getElementById('rbg-btn').disabled = true;
-        document.querySelector('.loading-text').textContent = 'AI is segmenting image...';
+        if (w > maxSize || h > maxSize) {
+            const ratio = Math.min(maxSize / w, maxSize / h);
+            w *= ratio;
+            h *= ratio;
+        }
+        
+        this.canvas.width = w;
+        this.canvas.height = h;
+        this.ctx.drawImage(img, 0, 0, w, h);
+    },
+
+    async processBackground() {
+        const loadingOverlay = document.getElementById('rbg-loading');
+        const statusTitle = document.getElementById('rbg-status-title');
+        const progressText = document.getElementById('rbg-progress-text');
+        
+        loadingOverlay.classList.remove('hidden');
+        document.getElementById('rbg-download-btn').disabled = true;
         
         try {
-            if (typeof imglyRemoveBackground === 'undefined') {
-                throw new Error('AI library is still loading. Please try again in a moment.');
+            // Load Transformers.js dynamically
+            statusTitle.textContent = 'Initializing AI...';
+            progressText.textContent = 'Loading Transformers.js';
+            
+            const { pipeline, env, RawImage } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+            
+            // Configure transformers.js for browser
+            env.allowLocalModels = false;
+            env.useBrowserCache = true;
+
+            // Load the model
+            if (!this.segmenter) {
+                statusTitle.textContent = 'Downloading Model...';
+                
+                this.segmenter = await pipeline('image-segmentation', 'briaai/RMBG-1.4', {
+                    progress_callback: (info) => {
+                        if (info.status === 'downloading') {
+                            const percent = Math.round((info.loaded / info.total) * 100);
+                            progressText.textContent = `Downloading ${info.file}: ${percent}%`;
+                        } else if (info.status === 'done') {
+                            progressText.textContent = `Finished downloading ${info.file}`;
+                        } else if (info.status === 'ready') {
+                            progressText.textContent = `Model Ready!`;
+                        }
+                    }
+                });
+                
+                document.getElementById('rbg-model-status').innerHTML = '<b>Note:</b> Model is now cached in your browser for instant future use!';
             }
 
-            // Call imgly background removal with explicit publicPath for unpkg to avoid CORS
-            const config = {
-                publicPath: 'https://unpkg.com/@imgly/background-removal-data@1.4.3/dist/'
-            };
-            const blob = await imglyRemoveBackground(this.file, config);
+            statusTitle.textContent = 'Segmenting Image...';
+            progressText.textContent = 'Running RMBG-1.4 Neural Network';
             
-            const url = URL.createObjectURL(blob);
-            const img = new Image();
-            img.src = url;
+            // Convert file to URL and process
+            const url = URL.createObjectURL(this.file);
+            const image = await RawImage.fromURL(url);
             
-            await new Promise((resolve) => {
-                img.onload = () => {
-                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                    this.ctx.drawImage(img, 0, 0);
-                    resolve();
-                };
+            // Run inference
+            const result = await this.segmenter(image);
+            
+            // The result is an array with a mask
+            let maskRaw;
+            if (Array.isArray(result)) {
+                maskRaw = result[0].mask;
+            } else {
+                maskRaw = result.mask || result;
+            }
+            
+            // Create a canvas from the output mask
+            const maskCanvas = maskRaw.toCanvas();
+            
+            // Create final canvas to compose original image and mask
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = this.originalImg.width;
+            finalCanvas.height = this.originalImg.height;
+            const finalCtx = finalCanvas.getContext('2d');
+            
+            // Draw original image
+            finalCtx.drawImage(this.originalImg, 0, 0);
+            
+            // Apply mask via globalCompositeOperation
+            finalCtx.globalCompositeOperation = 'destination-in';
+            // Draw the mask canvas, stretched to fit original size
+            finalCtx.drawImage(maskCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+            
+            // Restore context
+            finalCtx.globalCompositeOperation = 'source-over';
+
+            // Show result
+            this.drawPreview(finalCanvas);
+
+            // Export to blob
+            this.processedBlob = await new Promise(resolve => {
+                finalCanvas.toBlob(resolve, 'image/png');
             });
             
-            this.processedBlob = blob;
-            document.getElementById('rbg-download').style.display = 'block';
-            document.getElementById('rbg-btn').style.display = 'none';
+            document.getElementById('rbg-download-btn').disabled = false;
             Toast.success('Background removed successfully!');
+            URL.revokeObjectURL(url);
+            
         } catch (e) {
             console.error(e);
-            Toast.error(e.message || 'Failed to remove background');
+            Toast.error('Failed to process image with AI: ' + e.message);
         } finally {
-            document.getElementById('rbg-loading').classList.add('hidden');
-            document.getElementById('rbg-btn').disabled = false;
+            loadingOverlay.classList.add('hidden');
         }
     },
 
@@ -146,7 +213,6 @@ const RemoveBgTool = {
         if (!this.processedBlob) return;
         const newName = ImageUtils.getOutputFilename(this.file.name, 'nobg', 'png');
         
-        // Use a temporary anchor to download the blob directly
         const url = URL.createObjectURL(this.processedBlob);
         const a = document.createElement('a');
         a.href = url;
@@ -161,5 +227,6 @@ const RemoveBgTool = {
         this.file = null;
         this.originalImg = null;
         this.processedBlob = null;
+        // Don't destroy segmenter so it stays in memory across multiple image uses
     }
 };
