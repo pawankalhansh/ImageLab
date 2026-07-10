@@ -13,17 +13,6 @@ const App = {
             desc: 'Compress JPG, PNG, and WebP while saving space and maintaining quality.'
         },
         {
-            id: 'upscale', name: 'Upscale Image', category: 'optimize',
-            icon: '🔍', color: '#8FBC5D',
-            desc: 'Enlarge images 2x or 4x with high-quality resampling or optional AI super-resolution.'
-        },
-        {
-            id: 'remove-bg', name: 'Remove Background', category: 'optimize',
-            icon: '✂️', color: '#8FBC5D',
-            desc: 'AI-powered background removal. Runs entirely in your browser.',
-            badge: 'AI'
-        },
-        {
             id: 'resize', name: 'Resize IMAGE', category: 'edit',
             icon: '📐', color: '#3CB6E2',
             desc: 'Define your dimensions by percent or pixel, and resize your images.'
