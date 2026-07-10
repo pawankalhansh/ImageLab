@@ -13,6 +13,17 @@ const App = {
             desc: 'Compress JPG, PNG, and WebP while saving space and maintaining quality.'
         },
         {
+            id: 'upscale', name: 'Upscale Image', category: 'optimize',
+            icon: '🔍', color: '#8FBC5D',
+            desc: 'Enlarge images 2x or 4x with high-quality resampling or optional AI super-resolution.'
+        },
+        {
+            id: 'remove-bg', name: 'Remove Background', category: 'optimize',
+            icon: '✂️', color: '#8FBC5D',
+            desc: 'AI-powered background removal. Runs entirely in your browser.',
+            badge: 'AI'
+        },
+        {
             id: 'resize', name: 'Resize IMAGE', category: 'edit',
             icon: '📐', color: '#3CB6E2',
             desc: 'Define your dimensions by percent or pixel, and resize your images.'
@@ -62,6 +73,11 @@ const App = {
             icon: '🌐', color: '#FFD400',
             desc: 'Convert HTML & CSS code to PNG or JPG images instantly.'
         },
+        {
+            id: 'jpg-to-pdf', name: 'JPG to PDF', category: 'convert',
+            icon: '📄', color: '#FFD400',
+            desc: 'Convert multiple JPG or PNG images into a single PDF document.'
+        }
     ],
 
     init() {
@@ -115,7 +131,10 @@ const App = {
             'watermark': WatermarkTool,
             'meme': MemeTool,
             'blur': BlurTool,
-            'html-to-image': HtmlToImageTool
+            'html-to-image': HtmlToImageTool,
+            'jpg-to-pdf': JpgToPdfTool,
+            'remove-bg': RemoveBgTool,
+            'upscale': UpscaleTool
         };
     },
 

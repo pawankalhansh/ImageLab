@@ -229,3 +229,89 @@ function setupUploadZone(zoneId, fileInputId, onFiles, accept = 'image/*') {
         if (e.target.files.length) onFiles(e.target.files);
     });
 }
+
+/* ---- Dynamic script loader (cached) ---- */
+const _loadedScripts = new Map();
+function loadScript(src) {
+    if (_loadedScripts.has(src)) return _loadedScripts.get(src);
+    const promise = new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[src="${src}"]`);
+        if (existing) {
+            if (existing.dataset.loaded === '1') return resolve();
+            existing.addEventListener('load', () => resolve());
+            existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)));
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => {
+            script.dataset.loaded = '1';
+            resolve();
+        };
+        script.onerror = () => reject(new Error(`Failed to load ${src}`));
+        document.head.appendChild(script);
+    });
+    _loadedScripts.set(src, promise);
+    return promise;
+}
+
+/**
+ * High-quality canvas upscale with multi-step scaling + unsharp mask.
+ * Reliable offline fallback when AI upscalers fail to load.
+ */
+function canvasUpscale(img, scaleFactor) {
+    let src = img;
+    let currentW = img.width;
+    let currentH = img.height;
+    const targetW = Math.round(img.width * scaleFactor);
+    const targetH = Math.round(img.height * scaleFactor);
+
+    // Step up by at most 2x per pass for better interpolation quality
+    while (currentW < targetW || currentH < targetH) {
+        const nextW = Math.min(targetW, Math.round(currentW * 2));
+        const nextH = Math.min(targetH, Math.round(currentH * 2));
+        const canvas = document.createElement('canvas');
+        canvas.width = nextW;
+        canvas.height = nextH;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, nextW, nextH);
+        src = canvas;
+        currentW = nextW;
+        currentH = nextH;
+    }
+
+    // Light unsharp mask for perceived sharpness
+    const out = document.createElement('canvas');
+    out.width = targetW;
+    out.height = targetH;
+    const octx = out.getContext('2d');
+    octx.drawImage(src, 0, 0);
+
+    const imageData = octx.getImageData(0, 0, targetW, targetH);
+    const data = imageData.data;
+    const copy = new Uint8ClampedArray(data);
+    const amount = 0.35;
+    const w = targetW;
+
+    for (let y = 1; y < targetH - 1; y++) {
+        for (let x = 1; x < targetW - 1; x++) {
+            const i = (y * w + x) * 4;
+            for (let c = 0; c < 3; c++) {
+                const center = copy[i + c];
+                const blur =
+                    (copy[i - w * 4 + c] +
+                        copy[i + w * 4 + c] +
+                        copy[i - 4 + c] +
+                        copy[i + 4 + c] +
+                        center) /
+                    5;
+                data[i + c] = Math.max(0, Math.min(255, center + (center - blur) * amount));
+            }
+        }
+    }
+    octx.putImageData(imageData, 0, 0);
+    return out;
+}

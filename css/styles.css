@@ -1124,10 +1124,90 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .gap-24 { gap: 24px; }
 .w-full { width: 100%; }
 .text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.85rem; }
+.text-white { color: #fff; }
+.text-accent { color: var(--accent); }
+.text-slate-300 { color: #cbd5e1; }
+.text-slate-400 { color: #94a3b8; }
+.font-medium { font-weight: 500; }
+.font-bold { font-weight: 700; }
+.mt-2 { margin-top: 4px; }
+.mt-4 { margin-top: 8px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
 .mt-16 { margin-top: 16px; }
 .mt-24 { margin-top: 24px; }
+.mb-12 { margin-bottom: 12px; }
 .mb-16 { margin-bottom: 16px; }
 .font-mono { font-family: 'JetBrains Mono', monospace; }
+.grid { display: grid; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.top-0 { top: 0; }
+.right-0 { right: 0; }
+.rounded { border-radius: var(--radius-sm); }
+.overflow-hidden { overflow: hidden; }
+.aspect-square { aspect-ratio: 1 / 1; }
+.max-w-full { max-width: 100%; }
+.max-h-full { max-height: 100%; }
+.object-contain { object-fit: contain; }
+.bg-slate-800 { background: #1e293b; }
+.border { border: 1px solid var(--border); }
+.border-slate-700 { border-color: #334155; }
+.bg-black { background: #000; }
+.bg-opacity-75 { background: rgba(0, 0, 0, 0.75); }
+.px-2 { padding-left: 8px; padding-right: 8px; }
+.py-1 { padding-top: 4px; padding-bottom: 4px; }
+
+.btn-outline {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+.btn-outline:hover {
+    background: var(--bg-glass);
+    border-color: var(--border-hover);
+}
+.btn-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.info-box {
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+select.w-full,
+.controls-panel select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
+}
 
 /* Side-by-side layout for tool workspace */
 .tool-layout {

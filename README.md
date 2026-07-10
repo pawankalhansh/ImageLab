@@ -1,31 +1,43 @@
 # ImageLab
 
-A comprehensive, 100% client-side image processing suite. 
+A comprehensive, 100% client-side image processing suite.
 
-ImageLab runs entirely in your web browser, meaning your images are never uploaded to any servers. It features a modern, responsive user interface and offers a variety of powerful tools for image manipulation.
+ImageLab runs entirely in your web browser, meaning your images are never uploaded to any servers. It features a modern, responsive user interface and offers a variety of tools for image manipulation.
 
 ## Features
 
-- **Remove Background**: High-quality AI subject segmentation (runs locally).
-- **Upscale Image**: Enhance and enlarge images using native high-quality resampling and unsharp masking.
-- **Watermark**: Add text watermarks with customizable opacity and positioning.
-- **Compress**: Reduce image file size without losing significant quality.
-- **Crop & Resize**: Easily crop, rotate, and resize images to precise dimensions.
-- **Filters**: Apply Instagram-like filters and color adjustments.
-- **HTML to JPG**: Convert HTML code snippets directly into downloadable images.
-- **Format Conversion**: Convert between PNG, WEBP, and JPG.
+- **Compress** — Reduce JPG, PNG, and WebP file size while keeping quality.
+- **Upscale Image** — Enlarge 2x/4x with multi-step high-quality resampling (and optional AI super-resolution).
+- **Remove Background** — AI subject segmentation via `@imgly/background-removal` (local, cached model).
+- **Crop & Resize** — Crop, rotate, flip, and resize to exact dimensions.
+- **Convert** — Convert to/from JPG, PNG, WebP; HTML to image; JPG/PNG to multi-page PDF.
+- **Filters** — Brightness, contrast, saturation, grayscale, sepia, and more.
+- **Watermark & Blur** — Text watermarks and privacy blur regions.
+- **Meme Generator** — Top and bottom text on any image.
 
 ## How to Run Locally
 
 You don't need a backend server to run this app!
 
 1. Clone this repository.
-2. Open `index.html` in your web browser (or use a local development server like Live Server).
-3. Start editing!
+2. Serve the folder with any static server (recommended for AI tools that load modules from CDNs):
+
+   ```bash
+   # Python
+   python -m http.server 8080
+
+   # Node (npx)
+   npx serve .
+   ```
+
+3. Open `http://localhost:8080` in your browser.
+
+Opening `index.html` via `file://` works for most tools, but **Remove Background** and **AI Upscale** need a local HTTP server because they load ES modules from CDNs.
 
 ## Privacy
 
-Everything happens on your device. Zero data is sent to external servers for processing.
+Image processing happens on your device. AI models for background removal / upscale are downloaded from public CDNs on first use and cached by the browser — your images themselves are not uploaded for processing.
 
 ## Live Demo
-Check out the live version at [https://pawankalhansh.github.io/ImageLab/](https://pawankalhansh.github.io/ImageLab/)
+
+[https://pawankalhansh.github.io/ImageLab/](https://pawankalhansh.github.io/ImageLab/)

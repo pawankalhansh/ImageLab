@@ -4,7 +4,7 @@ const UpscaleTool = {
             <div class="tool-page">
                 <div class="tool-header">
                     <h1>${config.name}</h1>
-                    <p>${config.desc} True AI Super-Resolution.</p>
+                    <p>${config.desc}</p>
                 </div>
                 
                 <div id="upscale-upload-zone" class="upload-zone">
@@ -25,8 +25,16 @@ const UpscaleTool = {
                             <div class="control-group mt-16">
                                 <div class="control-label">Scale Factor</div>
                                 <div class="options-grid w-full mt-8">
-                                    <button class="preset-btn active" data-scale="2">2x</button>
-                                    <button class="preset-btn" data-scale="4">4x</button>
+                                    <button type="button" class="preset-btn active" data-scale="2">2x</button>
+                                    <button type="button" class="preset-btn" data-scale="4">4x</button>
+                                </div>
+                            </div>
+
+                            <div class="control-group mt-16">
+                                <div class="control-label">Method</div>
+                                <div class="options-grid w-full mt-8">
+                                    <button type="button" class="preset-btn method-btn active" data-method="quality">High Quality</button>
+                                    <button type="button" class="preset-btn method-btn" data-method="ai">AI (slower)</button>
                                 </div>
                             </div>
 
@@ -41,9 +49,9 @@ const UpscaleTool = {
                                 </div>
                             </div>
                             
-                            <div class="info-box mt-16" style="background: rgba(144, 238, 144, 0.1); border-left: 3px solid #4ade80;">
+                            <div class="info-box mt-16" id="upscale-method-note" style="background: rgba(144, 238, 144, 0.1); border-left: 3px solid #4ade80;">
                                 <p style="font-size: 0.8rem; color: #4ade80; margin: 0;">
-                                    <b>True AI:</b> Processing in chunks to prevent memory crashes. This will take a few moments.
+                                    <b>High Quality:</b> Multi-step resampling + sharpening. Fast and private.
                                 </p>
                             </div>
 
@@ -57,7 +65,7 @@ const UpscaleTool = {
                             
                             <div id="upscale-loading" class="loading-overlay hidden">
                                 <div class="spinner"></div>
-                                <div class="loading-text mt-12 text-center" style="max-width: 200px;">Loading AI Engine...</div>
+                                <div class="loading-text mt-12 text-center" style="max-width: 220px;">Processing...</div>
                             </div>
                         </div>
                     </div>
@@ -71,8 +79,10 @@ const UpscaleTool = {
     canvas: null,
     ctx: null,
     scaleFactor: 2,
+    method: 'quality',
     processedBlob: null,
     upscaler: null,
+    aiLoadFailed: false,
 
     init(config) {
         setupUploadZone('upscale-upload-zone', 'upscale-file-input', async (files) => {
@@ -82,10 +92,10 @@ const UpscaleTool = {
                     this.originalImg = await ImageUtils.loadImage(this.file);
                     this.canvas = document.getElementById('upscale-canvas');
                     this.ctx = this.canvas.getContext('2d');
-                    
+
                     document.getElementById('upscale-upload-zone').classList.add('hidden');
                     document.getElementById('upscale-workspace').classList.add('active');
-                    
+
                     this.updateInfo();
                     this.drawPreview();
                 } catch (e) {
@@ -94,12 +104,21 @@ const UpscaleTool = {
             }
         });
 
-        // Toggle scale factor
-        document.querySelectorAll('#upscale-workspace .preset-btn').forEach(btn => {
+        document.querySelectorAll('#upscale-workspace .preset-btn[data-scale]').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('#upscale-workspace .preset-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.scaleFactor = parseInt(e.target.dataset.scale);
+                document.querySelectorAll('#upscale-workspace .preset-btn[data-scale]').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                this.scaleFactor = parseInt(e.currentTarget.dataset.scale, 10);
+                this.updateInfo();
+            });
+        });
+
+        document.querySelectorAll('#upscale-workspace .method-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('#upscale-workspace .method-btn').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                this.method = e.currentTarget.dataset.method;
+                this.updateMethodNote();
                 this.updateInfo();
             });
         });
@@ -113,117 +132,157 @@ const UpscaleTool = {
         });
     },
 
+    updateMethodNote() {
+        const note = document.getElementById('upscale-method-note');
+        if (this.method === 'ai') {
+            note.innerHTML = `<p style="font-size: 0.8rem; color: #4ade80; margin: 0;">
+                <b>AI:</b> UpscalerJS ESRGAN (downloads ~TF.js models). Falls back to high quality if AI fails.
+            </p>`;
+        } else {
+            note.innerHTML = `<p style="font-size: 0.8rem; color: #4ade80; margin: 0;">
+                <b>High Quality:</b> Multi-step resampling + sharpening. Fast and private.
+            </p>`;
+        }
+    },
+
     updateInfo() {
         if (!this.originalImg) return;
-        document.getElementById('upscale-orig-size').textContent = `${this.originalImg.width} × ${this.originalImg.height}`;
-        document.getElementById('upscale-new-size').textContent = `${this.originalImg.width * this.scaleFactor} × ${this.originalImg.height * this.scaleFactor}`;
+        document.getElementById('upscale-orig-size').textContent =
+            `${this.originalImg.width} × ${this.originalImg.height}`;
+        document.getElementById('upscale-new-size').textContent =
+            `${this.originalImg.width * this.scaleFactor} × ${this.originalImg.height * this.scaleFactor}`;
         this.processedBlob = null;
-        
+
         const btn = document.getElementById('upscale-btn');
         btn.textContent = 'Upscale Image';
         btn.className = 'btn btn-primary w-full';
+        btn.disabled = false;
     },
 
-    drawPreview() {
-        // Just fit the original image in the canvas for preview
+    drawPreview(source) {
+        const img = source || this.originalImg;
+        if (!img) return;
+
         const maxSize = 800;
-        let w = this.originalImg.width;
-        let h = this.originalImg.height;
-        
+        let w = img.width;
+        let h = img.height;
+
         if (w > maxSize || h > maxSize) {
             const ratio = Math.min(maxSize / w, maxSize / h);
-            w *= ratio;
-            h *= ratio;
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
         }
-        
+
         this.canvas.width = w;
         this.canvas.height = h;
-        this.ctx.drawImage(this.originalImg, 0, 0, w, h);
+        this.ctx.clearRect(0, 0, w, h);
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
+        this.ctx.drawImage(img, 0, 0, w, h);
+    },
+
+    async loadAiUpscaler() {
+        if (this.upscaler) return this.upscaler;
+        if (this.aiLoadFailed) throw new Error('AI upscaler previously failed to load');
+
+        const loadingText = document.querySelector('#upscale-loading .loading-text');
+        loadingText.textContent = 'Loading TensorFlow.js...';
+
+        await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+        loadingText.textContent = 'Loading AI model...';
+        await loadScript('https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js');
+        await loadScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js');
+
+        if (typeof Upscaler === 'undefined') {
+            throw new Error('UpscalerJS failed to load');
+        }
+
+        const model = typeof DefaultUpscalerJSModel !== 'undefined'
+            ? (DefaultUpscalerJSModel.default || DefaultUpscalerJSModel)
+            : undefined;
+
+        this.upscaler = model
+            ? new Upscaler({ model })
+            : new Upscaler();
+
+        return this.upscaler;
     },
 
     async processUpscale() {
         if (!this.originalImg) return;
-        
-        document.getElementById('upscale-loading').classList.remove('hidden');
-        document.getElementById('upscale-btn').disabled = true;
-        document.querySelector('#upscale-loading .loading-text').innerHTML = 'Processing chunks with AI...<br><br><small>This may take a minute.</small>';
-        
-        try {
-            // Give UI time to update
-            await new Promise(r => setTimeout(r, 100));
 
-            // Initialize upscaler if not already done
-            if (!this.upscaler) {
-                const module = await import('https://esm.sh/upscaler@0.5.1');
-                const Upscaler = module.default;
-                this.upscaler = new Upscaler();
+        const loadingOverlay = document.getElementById('upscale-loading');
+        const loadingText = document.querySelector('#upscale-loading .loading-text');
+        const btn = document.getElementById('upscale-btn');
+
+        loadingOverlay.classList.remove('hidden');
+        btn.disabled = true;
+
+        try {
+            await new Promise(r => setTimeout(r, 50));
+
+            let resultCanvas;
+
+            if (this.method === 'ai') {
+                try {
+                    loadingText.innerHTML = 'Running AI super-resolution...<br><small>May take a minute</small>';
+                    const upscaler = await this.loadAiUpscaler();
+
+                    // Default model is 2x; for 4x we run quality scale after AI 2x
+                    const dataUrl = await upscaler.upscale(this.originalImg, {
+                        patchSize: 64,
+                        padding: 5,
+                    });
+
+                    const aiImg = await ImageUtils.loadImageFromURL(dataUrl);
+
+                    if (this.scaleFactor === 2) {
+                        resultCanvas = document.createElement('canvas');
+                        resultCanvas.width = aiImg.width;
+                        resultCanvas.height = aiImg.height;
+                        resultCanvas.getContext('2d').drawImage(aiImg, 0, 0);
+                    } else {
+                        // Stretch AI 2x result to 4x target with high-quality resampling
+                        const extra = this.scaleFactor / 2;
+                        resultCanvas = canvasUpscale(aiImg, extra);
+                    }
+                } catch (aiErr) {
+                    console.warn('AI upscale failed, using quality fallback:', aiErr);
+                    this.aiLoadFailed = true;
+                    Toast.warning('AI upscale unavailable — using high-quality resampling');
+                    loadingText.textContent = 'High-quality resampling...';
+                    resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
+                }
+            } else {
+                loadingText.textContent = 'High-quality resampling...';
+                resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
             }
 
-            // upscale the image using patch processing to prevent WebGL crashes on huge images
-            const dataUrl = await this.upscaler.upscale(this.originalImg, {
-                patchSize: 64,
-                padding: 2
-            });
+            this.drawPreview(resultCanvas);
 
-            // The upscaler always outputs at its native model scale (usually 2x for default model).
-            // If the user requested 4x, we upscale the result again using high-quality canvas, 
-            // since chaining AI models multiple times in browser will definitely crash it.
-            const tempImg = new Image();
-            await new Promise((resolve, reject) => {
-                tempImg.onload = resolve;
-                tempImg.onerror = reject;
-                tempImg.src = dataUrl;
-            });
+            this.processedBlob = await ImageUtils.canvasToBlob(resultCanvas, 'image/jpeg', 0.95);
 
-            const targetWidth = this.originalImg.width * this.scaleFactor;
-            const targetHeight = this.originalImg.height * this.scaleFactor;
-
-            const offCanvas = document.createElement('canvas');
-            offCanvas.width = targetWidth;
-            offCanvas.height = targetHeight;
-            const offCtx = offCanvas.getContext('2d');
-            
-            // Draw the AI upscaled image into the final requested size
-            offCtx.imageSmoothingEnabled = true;
-            offCtx.imageSmoothingQuality = 'high';
-            offCtx.drawImage(tempImg, 0, 0, targetWidth, targetHeight);
-
-            // Show preview of result
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.drawImage(offCanvas, 0, 0, this.canvas.width, this.canvas.height);
-
-            // Export blob
-            this.processedBlob = await new Promise(resolve => {
-                offCanvas.toBlob(resolve, 'image/jpeg', 0.95);
-            });
-
-            const btn = document.getElementById('upscale-btn');
             btn.textContent = 'Download Image';
             btn.className = 'btn btn-success w-full';
             btn.disabled = false;
-            
-            Toast.success('Image upscaled successfully with AI!');
+            Toast.success('Image upscaled successfully!');
         } catch (e) {
             console.error(e);
-            Toast.error('Failed to upscale image. Memory limit exceeded.');
-            document.getElementById('upscale-btn').disabled = false;
+            Toast.error('Failed to upscale: ' + (e.message || e));
+            btn.disabled = false;
         } finally {
-            document.getElementById('upscale-loading').classList.add('hidden');
+            loadingOverlay.classList.add('hidden');
         }
     },
 
     download() {
         if (!this.processedBlob) return;
-        const newName = ImageUtils.getOutputFilename(this.file.name, `upscaled_ai_${this.scaleFactor}x`, 'jpg');
-        
-        const url = URL.createObjectURL(this.processedBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = newName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const newName = ImageUtils.getOutputFilename(
+            this.file.name,
+            `upscaled_${this.scaleFactor}x`,
+            'jpg'
+        );
+        ImageUtils.downloadBlob(this.processedBlob, newName);
     },
 
     destroy() {
@@ -231,8 +290,9 @@ const UpscaleTool = {
         this.originalImg = null;
         this.processedBlob = null;
         if (this.upscaler) {
-            // Optional: dispose of upscaler memory if needed
-            this.upscaler.dispose && this.upscaler.dispose();
+            try {
+                this.upscaler.dispose && this.upscaler.dispose();
+            } catch (_) { /* ignore */ }
             this.upscaler = null;
         }
     }
