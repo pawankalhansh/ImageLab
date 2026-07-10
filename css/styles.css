@@ -25,6 +25,9 @@
     --bg-card-hover: rgba(30, 30, 60, 0.85);
     --bg-glass: rgba(255, 255, 255, 0.04);
     --bg-input: rgba(255, 255, 255, 0.06);
+    --bg-overlay: rgba(10, 10, 18, 0.85);
+    --bg-dropdown: rgba(17, 17, 39, 0.97);
+    --bg-overlay-solid: rgba(10, 10, 18, 0.95);
 
     /* Text */
     --text-primary: #f0f0f5;
@@ -106,7 +109,7 @@ input, select, textarea { font-family: inherit; }
     position: fixed;
     top: 0; left: 0; right: 0;
     height: var(--header-height);
-    background: rgba(10, 10, 18, 0.85);
+    background: var(--bg-overlay);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
@@ -165,7 +168,7 @@ input, select, textarea { font-family: inherit; }
     top: calc(100% + 12px);
     left: 50%;
     transform: translateX(-50%) translateY(8px);
-    background: rgba(17, 17, 39, 0.97);
+    background: var(--bg-dropdown);
     backdrop-filter: blur(24px);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -247,7 +250,7 @@ input, select, textarea { font-family: inherit; }
     position: fixed;
     top: var(--header-height);
     left: 0; right: 0; bottom: 0;
-    background: rgba(10, 10, 18, 0.98);
+    background: var(--bg-overlay-solid);
     backdrop-filter: blur(20px);
     z-index: 999;
     opacity: 0;
@@ -864,7 +867,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .loading-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(10, 10, 18, 0.85);
+    background: var(--bg-overlay);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -890,7 +893,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 .toast {
     padding: 14px 20px;
-    background: rgba(17, 17, 39, 0.97);
+    background: var(--bg-dropdown);
     backdrop-filter: blur(12px);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -912,7 +915,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* ---- Footer ---- */
 .footer {
-    background: rgba(10, 10, 18, 0.95);
+    background: var(--bg-overlay-solid);
     border-top: 1px solid var(--border);
     position: relative;
     z-index: 1;
@@ -1166,6 +1169,9 @@ input[type="range"]::-webkit-slider-thumb:hover {
     --bg-card-hover: rgba(248, 250, 252, 0.95);
     --bg-glass: rgba(0, 0, 0, 0.03);
     --bg-input: rgba(0, 0, 0, 0.05);
+    --bg-overlay: rgba(248, 250, 252, 0.85);
+    --bg-dropdown: rgba(255, 255, 255, 0.97);
+    --bg-overlay-solid: rgba(248, 250, 252, 0.95);
 
     --text-primary: #0f172a;
     --text-secondary: #334155;
