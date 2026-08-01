@@ -66,6 +66,16 @@ const App = {
             id: 'jpg-to-pdf', name: 'JPG to PDF', category: 'convert',
             icon: '📄', color: '#FFD400',
             desc: 'Convert multiple JPG or PNG images into a single PDF document.'
+        },
+        {
+            id: 'upscale', name: 'Upscale Image', category: 'edit',
+            icon: '🔍', color: '#3CB6E2', badge: 'New!',
+            desc: 'Enlarge your images 2x or 4x with high-quality resampling and sharpening.'
+        },
+        {
+            id: 'remove-bg', name: 'Remove Background', category: 'edit',
+            icon: '✂️', color: '#3CB6E2', badge: 'New!',
+            desc: 'AI-powered background removal that runs entirely in your browser. No uploads.'
         }
     ],
 
@@ -148,7 +158,9 @@ const App = {
             'meme': MemeTool,
             'blur': BlurTool,
             'html-to-image': HtmlToImageTool,
-            'jpg-to-pdf': JpgToPdfTool
+            'jpg-to-pdf': JpgToPdfTool,
+            'upscale': UpscaleTool,
+            'remove-bg': RemoveBgTool
         };
     },
 
