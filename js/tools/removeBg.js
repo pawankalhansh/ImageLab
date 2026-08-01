@@ -190,7 +190,18 @@ const RemoveBgTool = {
             statusTitle.textContent = 'Removing background...';
             progressText.textContent = 'Running neural network (first run downloads the model)';
 
-            const resultBlob = await removeBackground(this.file, {
+            let targetInput = this.file;
+            // The library supports png, jpeg, webp. Convert others like AVIF to PNG first.
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(this.file.type)) {
+                progressText.textContent = 'Converting image format...';
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.originalImg.width;
+                tempCanvas.height = this.originalImg.height;
+                tempCanvas.getContext('2d').drawImage(this.originalImg, 0, 0);
+                targetInput = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/png'));
+            }
+
+            const resultBlob = await removeBackground(targetInput, {
                 progress: (key, current, total) => {
                     if (total > 0) {
                         const pct = Math.round((current / total) * 100);
