@@ -76,6 +76,10 @@ const UpscaleTool = {
     scaleFactor: 2,
     processedBlob: null,
     upscalerInst: null,
+    resultImg: null,
+    sliderPos: 0.5,
+    isDragging: false,
+    hoveringSlider: false,
 
     async ensureUpscaler() {
         if (this.upscalerInst) return this.upscalerInst;
@@ -141,6 +145,70 @@ const UpscaleTool = {
                 this.processUpscale();
             }
         });
+
+        this.setupSliderEvents();
+    },
+
+    setupSliderEvents() {
+        const getMousePos = (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            let clientX = e.clientX;
+            if (e.touches && e.touches.length > 0) clientX = e.touches[0].clientX;
+            return (clientX - rect.left) / rect.width;
+        };
+
+        const updateCursor = (e) => {
+            if (!this.resultImg) return;
+            const pos = getMousePos(e);
+            const sliderPixel = this.sliderPos;
+            if (Math.abs(pos - sliderPixel) < 0.05) {
+                this.canvas.style.cursor = 'ew-resize';
+                this.hoveringSlider = true;
+            } else {
+                this.canvas.style.cursor = 'default';
+                this.hoveringSlider = false;
+            }
+        };
+
+        const startDrag = (e) => {
+            if (!this.resultImg) return;
+            const pos = getMousePos(e);
+            if (Math.abs(pos - this.sliderPos) < 0.1 || e.type === 'touchstart') {
+                this.isDragging = true;
+                this.sliderPos = Math.max(0, Math.min(1, pos));
+                this.drawPreview();
+            }
+        };
+
+        const onDrag = (e) => {
+            if (!this.resultImg) return;
+            updateCursor(e);
+            if (this.isDragging) {
+                this.sliderPos = Math.max(0, Math.min(1, getMousePos(e)));
+                this.drawPreview();
+                if (e.cancelable) e.preventDefault();
+            }
+        };
+
+        const endDrag = () => {
+            this.isDragging = false;
+        };
+
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.id === 'upscale-canvas') startDrag(e);
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (e.target.id === 'upscale-canvas' || this.isDragging) onDrag(e);
+        });
+        document.addEventListener('mouseup', endDrag);
+        
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.id === 'upscale-canvas') startDrag(e);
+        }, { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (this.isDragging) onDrag(e);
+        }, { passive: false });
+        document.addEventListener('touchend', endDrag);
     },
 
     updateInfo() {
@@ -157,13 +225,19 @@ const UpscaleTool = {
         btn.disabled = false;
     },
 
-    drawPreview(source) {
-        const img = source || this.originalImg;
+    drawPreview(sourceOverride) {
+        if (!this.canvas || !this.ctx) return;
+        
+        const img = sourceOverride || this.originalImg;
         if (!img) return;
 
         const maxSize = 800;
         let w = img.width;
         let h = img.height;
+        if (img instanceof HTMLCanvasElement || img instanceof HTMLImageElement) {
+            w = img.width || img.naturalWidth;
+            h = img.height || img.naturalHeight;
+        }
 
         if (w > maxSize || h > maxSize) {
             const ratio = Math.min(maxSize / w, maxSize / h);
@@ -176,7 +250,59 @@ const UpscaleTool = {
         this.ctx.clearRect(0, 0, w, h);
         this.ctx.imageSmoothingEnabled = true;
         this.ctx.imageSmoothingQuality = 'high';
-        this.ctx.drawImage(img, 0, 0, w, h);
+
+        if (this.resultImg) {
+            // Split view mode
+            const splitX = w * this.sliderPos;
+            
+            // Draw original on left
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.rect(0, 0, splitX, h);
+            this.ctx.clip();
+            this.ctx.drawImage(this.originalImg, 0, 0, w, h);
+            this.ctx.restore();
+            
+            // Draw upscaled result on right
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.rect(splitX, 0, w - splitX, h);
+            this.ctx.clip();
+            this.ctx.drawImage(this.resultImg, 0, 0, w, h);
+            this.ctx.restore();
+            
+            // Draw slider line
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillRect(splitX - 1.5, 0, 3, h);
+            
+            // Draw slider handle
+            this.ctx.beginPath();
+            this.ctx.arc(splitX, h / 2, 16, 0, Math.PI * 2);
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fill();
+            this.ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            this.ctx.shadowBlur = 6;
+            this.ctx.fill();
+            this.ctx.shadowColor = 'transparent';
+            
+            // Draw arrows
+            this.ctx.fillStyle = '#64748b';
+            this.ctx.beginPath();
+            this.ctx.moveTo(splitX - 6, h / 2);
+            this.ctx.lineTo(splitX - 2, h / 2 - 4);
+            this.ctx.lineTo(splitX - 2, h / 2 + 4);
+            this.ctx.fill();
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(splitX + 6, h / 2);
+            this.ctx.lineTo(splitX + 2, h / 2 - 4);
+            this.ctx.lineTo(splitX + 2, h / 2 + 4);
+            this.ctx.fill();
+            
+        } else {
+            // Normal view
+            this.ctx.drawImage(img, 0, 0, w, h);
+        }
     },
 
     async processUpscale() {
@@ -239,7 +365,9 @@ const UpscaleTool = {
                 resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
             }
 
-            this.drawPreview(resultCanvas);
+            this.resultImg = resultCanvas;
+            this.sliderPos = 0.5;
+            this.drawPreview();
 
             // Determine output format — keep PNG for PNGs, use JPEG for others
             const isPng = this.file.type === 'image/png' || this.file.name.toLowerCase().endsWith('.png');
