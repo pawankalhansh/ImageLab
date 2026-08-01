@@ -333,26 +333,31 @@ const UpscaleTool = {
                 while (currentScale < this.scaleFactor) {
                     progressText.textContent = `Running neural network (${currentScale}x to ${currentScale * 2}x)...`;
                     
-                    const tensor = await upscaler.upscale(currentImg, {
-                        patchSize: 64,
-                        padding: 2,
-                        output: 'tensor',
+                    currentImg = await upscaler.upscale(currentImg, {
                         progress: (percent) => {
                             progressText.textContent = `Processing: ${Math.round(percent * 100)}%`;
                         }
                     });
                     
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = tensor.shape[1];
-                    tempCanvas.height = tensor.shape[0];
-                    await window.tf.browser.toPixels(tensor, tempCanvas);
-                    tensor.dispose();
-                    
-                    currentImg = tempCanvas;
                     currentScale *= 2;
                 }
                 
-                resultCanvas = currentImg;
+                // Convert result back to canvas
+                const img = new Image();
+                img.src = currentImg;
+                await new Promise(r => {
+                    img.onload = r;
+                    img.onerror = () => {
+                        console.error("Failed to load AI upscaled image source");
+                        r();
+                    };
+                });
+                
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = img.width || this.originalImg.width * this.scaleFactor;
+                tempCanvas.height = img.height || this.originalImg.height * this.scaleFactor;
+                tempCanvas.getContext('2d').drawImage(img, 0, 0);
+                resultCanvas = tempCanvas;
             } catch (aiError) {
                 console.warn("AI Upscaling failed, falling back to Canvas Resampling", aiError);
                 statusTitle.textContent = 'High-quality resampling...';
