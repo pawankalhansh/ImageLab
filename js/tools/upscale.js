@@ -43,7 +43,7 @@ const UpscaleTool = {
                             
                             <div class="info-box mt-16" id="upscale-method-note" style="background: rgba(144, 238, 144, 0.1); border-left: 3px solid #4ade80;">
                                 <p style="font-size: 0.8rem; color: #4ade80; margin: 0;">
-                                    <b>Premium AI Upscaling:</b> Uses Real-Time AI Super Resolution (ESRGAN) running securely in your browser to maintain perfect edges without blurring.
+                                    <b>Premium HQ Upscaling:</b> Uses the Lanczos3 algorithm with Unsharp Mask to maintain crisp edges without blurring. Works 100% offline.
                                 </p>
                             </div>
 
@@ -75,14 +75,14 @@ const UpscaleTool = {
     ctx: null,
     scaleFactor: 2,
     processedBlob: null,
-    upscalerInst: null,
+    picaInst: null,
     resultImg: null,
     sliderPos: 0.5,
     isDragging: false,
     hoveringSlider: false,
 
-    async ensureUpscaler() {
-        if (this.upscalerInst) return this.upscalerInst;
+    async ensurePica() {
+        if (this.picaInst) return this.picaInst;
         
         return new Promise((resolve, reject) => {
             const loadScript = (src) => new Promise((res, rej) => {
@@ -94,20 +94,13 @@ const UpscaleTool = {
                 document.head.appendChild(s);
             });
             
-            Promise.all([
-                loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js').then(() => {
-                    return loadScript('https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js');
-                }).then(() => {
-                    return loadScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js');
-                })
-            ]).then(() => {
-                if (window.Upscaler) {
-                    this.upscalerInst = new window.Upscaler({
-                        model: window.DefaultUpscalerJSModel
-                    });
-                    resolve(this.upscalerInst);
+            loadScript('https://cdn.jsdelivr.net/npm/pica@9.0.1/dist/pica.min.js')
+            .then(() => {
+                if (window.pica) {
+                    this.picaInst = window.pica();
+                    resolve(this.picaInst);
                 } else {
-                    reject(new Error("Upscaler not found on window"));
+                    reject(new Error("Pica library failed to load"));
                 }
             }).catch(reject);
         });
@@ -317,60 +310,47 @@ const UpscaleTool = {
         btn.disabled = true;
 
         try {
-            statusTitle.textContent = 'Initializing AI...';
-            progressText.textContent = 'Loading models (may take a moment)';
+            statusTitle.textContent = 'Initializing Engine...';
+            progressText.textContent = 'Loading HQ Resampler...';
             
             let resultCanvas;
             try {
-                const upscaler = await this.ensureUpscaler();
+                const pica = await this.ensurePica();
                 
                 statusTitle.textContent = 'Upscaling image...';
+                progressText.textContent = `Applying Lanczos3 and Unsharp Mask (${this.scaleFactor}x)...`;
                 
-                // If scale factor is 4, we might need to call it multiple times or use a 4x model.
-                // The default model is usually 2x. If scaleFactor is 4x, we can upscale twice for simplicity
-                // or just rely on the upscaler to handle it.
-                // Actually Upscaler default model is 2x. Let's do a loop if needed.
+                const targetW = this.originalImg.width * this.scaleFactor;
+                const targetH = this.originalImg.height * this.scaleFactor;
                 
-                let currentImg = this.originalImg;
-                let currentScale = 1;
+                // Create source canvas from original img
+                const srcCanvas = document.createElement('canvas');
+                srcCanvas.width = this.originalImg.width;
+                srcCanvas.height = this.originalImg.height;
+                srcCanvas.getContext('2d').drawImage(this.originalImg, 0, 0);
                 
-                while (currentScale < this.scaleFactor) {
-                    progressText.textContent = `Running neural network (${currentScale}x to ${currentScale * 2}x)...`;
-                    
-                    currentImg = await upscaler.upscale(currentImg, {
-                        patchSize: 64,
-                        padding: 2,
-                        progress: (percent) => {
-                            progressText.textContent = `Processing: ${Math.round(percent * 100)}%`;
-                        }
-                    });
-                    
-                    currentScale *= 2;
-                }
+                const destCanvas = document.createElement('canvas');
+                destCanvas.width = targetW;
+                destCanvas.height = targetH;
                 
-                // Convert result back to canvas
-                const img = new Image();
-                img.src = currentImg;
-                await new Promise((r, reject) => {
-                    img.onload = r;
-                    img.onerror = () => reject(new Error("Failed to load AI upscaled image source"));
+                // Use Pica to resize with high quality unsharp mask
+                await pica.resize(srcCanvas, destCanvas, {
+                    unsharpAmount: 180, // Strong sharpening for crisp edges
+                    unsharpRadius: 0.7,
+                    unsharpThreshold: 0
                 });
                 
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = img.width || this.originalImg.width * this.scaleFactor;
-                tempCanvas.height = img.height || this.originalImg.height * this.scaleFactor;
-                tempCanvas.getContext('2d').drawImage(img, 0, 0);
-                resultCanvas = tempCanvas;
+                resultCanvas = destCanvas;
                 
-            } catch (aiError) {
-                console.error("AI Upscaling Error:", aiError);
-                statusTitle.textContent = 'AI Upscaling Failed';
-                progressText.textContent = aiError.message || String(aiError);
+            } catch (picaError) {
+                console.error("Pica Error:", picaError);
+                statusTitle.textContent = 'Upscaling Failed';
+                progressText.textContent = picaError.message || String(picaError);
                 progressText.style.color = '#ef4444'; // Red error text
                 
                 // Keep the loading overlay visible for 3 seconds so the user can read the error
                 await new Promise(r => setTimeout(r, 4000));
-                throw new Error("AI Upscaling failed: " + (aiError.message || String(aiError)));
+                throw new Error("HQ Upscaling failed: " + (picaError.message || String(picaError)));
             }
 
             this.resultImg = resultCanvas;
