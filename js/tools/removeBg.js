@@ -143,11 +143,11 @@ const RemoveBgTool = {
         statusTitle.textContent = 'Loading AI library...';
         progressText.textContent = 'Downloading background-removal engine';
 
-        // Try multiple CDN sources for reliability
+        // Try multiple CDN sources for reliability, using +esm for browser compatibility
         const cdnUrls = [
-            'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/index.mjs',
+            'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm',
             'https://unpkg.com/@imgly/background-removal@1.5.5/dist/index.mjs',
-            'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.mjs'
+            'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm'
         ];
 
         let mod = null;
