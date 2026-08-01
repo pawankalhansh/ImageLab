@@ -96,14 +96,14 @@ const UpscaleTool = {
             
             Promise.all([
                 loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js').then(() => {
-                    return loadScript('https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/browser/umd/index.min.js');
+                    return loadScript('https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js');
                 }).then(() => {
                     return loadScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js');
                 })
             ]).then(() => {
                 if (window.Upscaler) {
                     this.upscalerInst = new window.Upscaler({
-                        model: window['@upscalerjs/default-model']
+                        model: window.DefaultUpscalerJSModel
                     });
                     resolve(this.upscalerInst);
                 } else {
