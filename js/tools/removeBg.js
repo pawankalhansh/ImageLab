@@ -57,10 +57,14 @@ const RemoveBgTool = {
 
     file: null,
     originalImg: null,
+    resultImg: null,
     canvas: null,
     ctx: null,
     processedBlob: null,
     removeBackgroundFn: null,
+    sliderPos: 0.5,
+    isDragging: false,
+    hoveringSlider: false,
 
     init(config) {
         setupUploadZone('rbg-upload-zone', 'rbg-file-input', async (files) => {
@@ -71,6 +75,8 @@ const RemoveBgTool = {
                     this.canvas = document.getElementById('rbg-canvas');
                     this.ctx = this.canvas.getContext('2d');
                     this.processedBlob = null;
+                    this.resultImg = null;
+                    this.sliderPos = 0.5;
                     document.getElementById('rbg-download-btn').disabled = true;
                     document.getElementById('rbg-process-btn').disabled = false;
                     document.getElementById('rbg-process-btn').textContent = 'Remove Background';
@@ -91,6 +97,8 @@ const RemoveBgTool = {
 
         document.getElementById('rbg-reset-btn').addEventListener('click', () => {
             this.processedBlob = null;
+            this.resultImg = null;
+            this.sliderPos = 0.5;
             document.getElementById('rbg-download-btn').disabled = true;
             document.getElementById('rbg-workspace').classList.remove('active');
             document.getElementById('rbg-upload-zone').classList.remove('hidden');
@@ -102,9 +110,82 @@ const RemoveBgTool = {
         document.getElementById('rbg-download-btn').addEventListener('click', () => {
             if (this.processedBlob) this.download();
         });
+
+        this.setupSliderEvents();
     },
 
-    drawPreview(source) {
+    setupSliderEvents() {
+        // Wait until canvas is available
+        const getMousePos = (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            let clientX = e.clientX;
+            if (e.touches && e.touches.length > 0) clientX = e.touches[0].clientX;
+            return (clientX - rect.left) / rect.width;
+        };
+
+        const updateCursor = (e) => {
+            if (!this.resultImg) return;
+            const pos = getMousePos(e);
+            const sliderPixel = this.sliderPos;
+            if (Math.abs(pos - sliderPixel) < 0.05) {
+                this.canvas.style.cursor = 'ew-resize';
+                this.hoveringSlider = true;
+            } else {
+                this.canvas.style.cursor = 'default';
+                this.hoveringSlider = false;
+            }
+        };
+
+        const startDrag = (e) => {
+            if (!this.resultImg) return;
+            const pos = getMousePos(e);
+            if (Math.abs(pos - this.sliderPos) < 0.1 || e.type === 'touchstart') {
+                this.isDragging = true;
+                this.sliderPos = Math.max(0, Math.min(1, pos));
+                this.drawPreview();
+            }
+        };
+
+        const onDrag = (e) => {
+            if (!this.resultImg) return;
+            updateCursor(e);
+            if (this.isDragging) {
+                this.sliderPos = Math.max(0, Math.min(1, getMousePos(e)));
+                this.drawPreview();
+                if (e.cancelable) e.preventDefault();
+            }
+        };
+
+        const endDrag = () => {
+            this.isDragging = false;
+        };
+
+        // Attach globally to document so we can handle element replacement, but we need the actual canvas
+        // We'll attach them directly using a delegated approach or re-attach in init.
+        // Actually, we can attach to a wrapper or use document events.
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.id === 'rbg-canvas') startDrag(e);
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (e.target.id === 'rbg-canvas' || this.isDragging) onDrag(e);
+        });
+        document.addEventListener('mouseup', endDrag);
+        
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.id === 'rbg-canvas') startDrag(e);
+        }, { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (this.isDragging) onDrag(e);
+        }, { passive: false });
+        document.addEventListener('touchend', endDrag);
+    },
+
+    drawPreview(sourceOverride) {
+        if (!this.canvas || !this.ctx) return;
+        
+        const source = sourceOverride || this.originalImg;
+        if (!source) return;
+
         const maxSize = 800;
         let w = source.width || source.naturalWidth;
         let h = source.height || source.naturalHeight;
@@ -119,9 +200,60 @@ const RemoveBgTool = {
         this.canvas.height = h;
         this.ctx.clearRect(0, 0, w, h);
 
-        // Checkerboard for transparent PNGs
-        this.drawCheckerboard(w, h);
-        this.ctx.drawImage(source, 0, 0, w, h);
+        if (this.resultImg) {
+            // Draw split view
+            const splitX = w * this.sliderPos;
+            
+            // Draw original on left
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.rect(0, 0, splitX, h);
+            this.ctx.clip();
+            this.ctx.drawImage(this.originalImg, 0, 0, w, h);
+            this.ctx.restore();
+            
+            // Draw result on right (with checkerboard)
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.rect(splitX, 0, w - splitX, h);
+            this.ctx.clip();
+            this.drawCheckerboard(w, h);
+            this.ctx.drawImage(this.resultImg, 0, 0, w, h);
+            this.ctx.restore();
+            
+            // Draw slider line
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillRect(splitX - 1.5, 0, 3, h);
+            
+            // Draw slider handle
+            this.ctx.beginPath();
+            this.ctx.arc(splitX, h / 2, 16, 0, Math.PI * 2);
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fill();
+            this.ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            this.ctx.shadowBlur = 6;
+            this.ctx.fill();
+            this.ctx.shadowColor = 'transparent';
+            
+            // Draw arrows
+            this.ctx.fillStyle = '#64748b';
+            this.ctx.beginPath();
+            this.ctx.moveTo(splitX - 6, h / 2);
+            this.ctx.lineTo(splitX - 2, h / 2 - 4);
+            this.ctx.lineTo(splitX - 2, h / 2 + 4);
+            this.ctx.fill();
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(splitX + 6, h / 2);
+            this.ctx.lineTo(splitX + 2, h / 2 - 4);
+            this.ctx.lineTo(splitX + 2, h / 2 + 4);
+            this.ctx.fill();
+            
+        } else {
+            // Checkerboard for transparent PNGs if original has transparency
+            this.drawCheckerboard(w, h);
+            this.ctx.drawImage(source, 0, 0, w, h);
+        }
     },
 
     drawCheckerboard(w, h) {
@@ -213,10 +345,11 @@ const RemoveBgTool = {
             });
 
             this.processedBlob = resultBlob;
-
+            
             const resultUrl = URL.createObjectURL(resultBlob);
-            const resultImg = await ImageUtils.loadImageFromURL(resultUrl);
-            this.drawPreview(resultImg);
+            this.resultImg = await ImageUtils.loadImageFromURL(resultUrl);
+            this.sliderPos = 0.5; // Reset slider to middle
+            this.drawPreview();
             URL.revokeObjectURL(resultUrl);
 
             document.getElementById('rbg-model-status').innerHTML =
