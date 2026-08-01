@@ -228,16 +228,12 @@ const UpscaleTool = {
     drawPreview(sourceOverride) {
         if (!this.canvas || !this.ctx) return;
         
-        const img = sourceOverride || this.originalImg;
-        if (!img) return;
+        const targetImg = this.resultImg || sourceOverride || this.originalImg;
+        if (!targetImg) return;
 
         const maxSize = 800;
-        let w = img.width;
-        let h = img.height;
-        if (img instanceof HTMLCanvasElement || img instanceof HTMLImageElement) {
-            w = img.width || img.naturalWidth;
-            h = img.height || img.naturalHeight;
-        }
+        let w = targetImg.width || targetImg.naturalWidth;
+        let h = targetImg.height || targetImg.naturalHeight;
 
         if (w > maxSize || h > maxSize) {
             const ratio = Math.min(maxSize / w, maxSize / h);
@@ -301,7 +297,7 @@ const UpscaleTool = {
             
         } else {
             // Normal view
-            this.ctx.drawImage(img, 0, 0, w, h);
+            this.ctx.drawImage(targetImg, 0, 0, w, h);
         }
     },
 
