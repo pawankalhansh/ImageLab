@@ -95,15 +95,19 @@ const UpscaleTool = {
             });
             
             Promise.all([
-                loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js').then(() => 
-                    loadScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js')
-                )
+                loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js').then(() => {
+                    return loadScript('https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/browser/umd/index.min.js');
+                }).then(() => {
+                    return loadScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js');
+                })
             ]).then(() => {
                 if (window.Upscaler) {
-                    this.upscalerInst = new window.Upscaler();
+                    this.upscalerInst = new window.Upscaler({
+                        model: window['@upscalerjs/default-model']
+                    });
                     resolve(this.upscalerInst);
                 } else {
-                    reject(new Error("Upscaler not found"));
+                    reject(new Error("Upscaler not found on window"));
                 }
             }).catch(reject);
         });
@@ -334,6 +338,8 @@ const UpscaleTool = {
                     progressText.textContent = `Running neural network (${currentScale}x to ${currentScale * 2}x)...`;
                     
                     currentImg = await upscaler.upscale(currentImg, {
+                        patchSize: 64,
+                        padding: 2,
                         progress: (percent) => {
                             progressText.textContent = `Processing: ${Math.round(percent * 100)}%`;
                         }
@@ -345,12 +351,9 @@ const UpscaleTool = {
                 // Convert result back to canvas
                 const img = new Image();
                 img.src = currentImg;
-                await new Promise(r => {
+                await new Promise((r, reject) => {
                     img.onload = r;
-                    img.onerror = () => {
-                        console.error("Failed to load AI upscaled image source");
-                        r();
-                    };
+                    img.onerror = () => reject(new Error("Failed to load AI upscaled image source"));
                 });
                 
                 const tempCanvas = document.createElement('canvas');
@@ -358,12 +361,16 @@ const UpscaleTool = {
                 tempCanvas.height = img.height || this.originalImg.height * this.scaleFactor;
                 tempCanvas.getContext('2d').drawImage(img, 0, 0);
                 resultCanvas = tempCanvas;
+                
             } catch (aiError) {
-                console.warn("AI Upscaling failed, falling back to Canvas Resampling", aiError);
-                statusTitle.textContent = 'High-quality resampling...';
-                progressText.textContent = 'Fallback mode';
-                await new Promise(r => setTimeout(r, 50));
-                resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
+                console.error("AI Upscaling Error:", aiError);
+                statusTitle.textContent = 'AI Upscaling Failed';
+                progressText.textContent = aiError.message || String(aiError);
+                progressText.style.color = '#ef4444'; // Red error text
+                
+                // Keep the loading overlay visible for 3 seconds so the user can read the error
+                await new Promise(r => setTimeout(r, 4000));
+                throw new Error("AI Upscaling failed: " + (aiError.message || String(aiError)));
             }
 
             this.resultImg = resultCanvas;
