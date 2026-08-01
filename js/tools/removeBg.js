@@ -258,10 +258,14 @@ const RemoveBgTool = {
 
     drawCheckerboard(w, h) {
         const size = 12;
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const color1 = isDark ? '#2a2a3a' : '#e5e7eb';
+        const color2 = isDark ? '#3a3a4a' : '#f9fafb';
+        
         for (let y = 0; y < h; y += size) {
             for (let x = 0; x < w; x += size) {
-                const dark = ((x / size) + (y / size)) % 2 === 0;
-                this.ctx.fillStyle = dark ? '#2a2a3a' : '#3a3a4a';
+                const isEven = ((x / size) + (y / size)) % 2 === 0;
+                this.ctx.fillStyle = isEven ? color1 : color2;
                 this.ctx.fillRect(x, y, size, size);
             }
         }
