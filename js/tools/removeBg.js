@@ -33,7 +33,7 @@ const RemoveBgTool = {
                             
                             <div class="actions-bar mt-24" style="flex-direction: column;">
                                 <button id="rbg-process-btn" class="btn btn-primary w-full mb-12">Remove Background</button>
-                                <button id="rbg-reset-btn" class="btn btn-outline w-full mb-12">Reset Image</button>
+                                <button id="rbg-reset-btn" class="btn btn-secondary w-full mb-12">Reset / Change Image</button>
                                 <button id="rbg-download-btn" class="btn btn-success w-full" disabled>Download PNG</button>
                             </div>
                         </div>
@@ -66,6 +66,13 @@ const RemoveBgTool = {
     isDragging: false,
     hoveringSlider: false,
 
+    _onMouseDown: null,
+    _onMouseMove: null,
+    _onMouseUp: null,
+    _onTouchStart: null,
+    _onTouchMove: null,
+    _onTouchEnd: null,
+
     init(config) {
         setupUploadZone('rbg-upload-zone', 'rbg-file-input', async (files) => {
             if (files.length > 0) {
@@ -96,15 +103,7 @@ const RemoveBgTool = {
         });
 
         document.getElementById('rbg-reset-btn').addEventListener('click', () => {
-            this.processedBlob = null;
-            this.resultImg = null;
-            this.sliderPos = 0.5;
-            document.getElementById('rbg-download-btn').disabled = true;
-            document.getElementById('rbg-workspace').classList.remove('active');
-            document.getElementById('rbg-upload-zone').classList.remove('hidden');
-            document.getElementById('rbg-file-input').value = '';
-            document.getElementById('rbg-process-btn').textContent = 'Remove Background';
-            document.getElementById('rbg-process-btn').disabled = false;
+            this.reset();
         });
 
         document.getElementById('rbg-download-btn').addEventListener('click', () => {
@@ -115,8 +114,10 @@ const RemoveBgTool = {
     },
 
     setupSliderEvents() {
-        // Wait until canvas is available
+        this.removeSliderEvents();
+
         const getMousePos = (e) => {
+            if (!this.canvas) return 0.5;
             const rect = this.canvas.getBoundingClientRect();
             let clientX = e.clientX;
             if (e.touches && e.touches.length > 0) clientX = e.touches[0].clientX;
@@ -124,7 +125,7 @@ const RemoveBgTool = {
         };
 
         const updateCursor = (e) => {
-            if (!this.resultImg) return;
+            if (!this.resultImg || !this.canvas) return;
             const pos = getMousePos(e);
             const sliderPixel = this.sliderPos;
             if (Math.abs(pos - sliderPixel) < 0.05) {
@@ -160,24 +161,45 @@ const RemoveBgTool = {
             this.isDragging = false;
         };
 
-        // Attach globally to document so we can handle element replacement, but we need the actual canvas
-        // We'll attach them directly using a delegated approach or re-attach in init.
-        // Actually, we can attach to a wrapper or use document events.
-        document.addEventListener('mousedown', (e) => {
+        this._onMouseDown = (e) => {
             if (e.target.id === 'rbg-canvas') startDrag(e);
-        });
-        document.addEventListener('mousemove', (e) => {
+        };
+        this._onMouseMove = (e) => {
             if (e.target.id === 'rbg-canvas' || this.isDragging) onDrag(e);
-        });
-        document.addEventListener('mouseup', endDrag);
-        
-        document.addEventListener('touchstart', (e) => {
+        };
+        this._onMouseUp = endDrag;
+
+        this._onTouchStart = (e) => {
             if (e.target.id === 'rbg-canvas') startDrag(e);
-        }, { passive: false });
-        document.addEventListener('touchmove', (e) => {
+        };
+        this._onTouchMove = (e) => {
             if (this.isDragging) onDrag(e);
-        }, { passive: false });
-        document.addEventListener('touchend', endDrag);
+        };
+        this._onTouchEnd = endDrag;
+
+        document.addEventListener('mousedown', this._onMouseDown);
+        document.addEventListener('mousemove', this._onMouseMove);
+        document.addEventListener('mouseup', this._onMouseUp);
+        
+        document.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        document.addEventListener('touchend', this._onTouchEnd);
+    },
+
+    removeSliderEvents() {
+        if (this._onMouseDown) document.removeEventListener('mousedown', this._onMouseDown);
+        if (this._onMouseMove) document.removeEventListener('mousemove', this._onMouseMove);
+        if (this._onMouseUp) document.removeEventListener('mouseup', this._onMouseUp);
+        if (this._onTouchStart) document.removeEventListener('touchstart', this._onTouchStart);
+        if (this._onTouchMove) document.removeEventListener('touchmove', this._onTouchMove);
+        if (this._onTouchEnd) document.removeEventListener('touchend', this._onTouchEnd);
+
+        this._onMouseDown = null;
+        this._onMouseMove = null;
+        this._onMouseUp = null;
+        this._onTouchStart = null;
+        this._onTouchMove = null;
+        this._onTouchEnd = null;
     },
 
     drawPreview(sourceOverride) {
@@ -298,7 +320,7 @@ const RemoveBgTool = {
         }
 
         if (!mod) {
-            throw new Error('Could not load background removal library from any CDN');
+            throw new Error('Could not load background removal library from any CDN. Please check your network connection.');
         }
 
         this.removeBackgroundFn = mod.removeBackground || mod.default?.removeBackground || mod.default;
@@ -306,6 +328,17 @@ const RemoveBgTool = {
             throw new Error('Background removal library failed to initialize');
         }
         return this.removeBackgroundFn;
+    },
+
+    formatErrorMessage(e) {
+        const msg = (e && e.message) ? e.message : String(e);
+        if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed to fetch') || msg.includes('Could not load')) {
+            return 'Network error downloading AI model assets. Check connection or ad-blocker';
+        }
+        if (msg.includes('wasm') || msg.includes('WebAssembly') || msg.includes('memory') || msg.includes('WebGL')) {
+            return 'Hardware acceleration error. Check browser graphics settings';
+        }
+        return msg || 'An unexpected error occurred while processing';
     },
 
     async processBackground() {
@@ -337,16 +370,32 @@ const RemoveBgTool = {
                 targetInput = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/png'));
             }
 
-            const resultBlob = await removeBackground(targetInput, {
-                progress: (key, current, total) => {
-                    if (total > 0) {
-                        const pct = Math.round((current / total) * 100);
-                        progressText.textContent = `${key || 'Progress'}: ${pct}%`;
-                    } else {
-                        progressText.textContent = key || 'Processing...';
-                    }
-                },
-            });
+            const runRemoval = async (publicPath) => {
+                return await removeBackground(targetInput, {
+                    publicPath,
+                    progress: (key, current, total) => {
+                        if (total > 0) {
+                            const pct = Math.round((current / total) * 100);
+                            progressText.textContent = `${key || 'Progress'}: ${pct}%`;
+                        } else {
+                            progressText.textContent = key || 'Processing...';
+                        }
+                    },
+                });
+            };
+
+            let resultBlob;
+            const primaryPath = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/';
+            const fallbackPath = 'https://unpkg.com/@imgly/background-removal-data@1.5.5/dist/';
+
+            try {
+                resultBlob = await runRemoval(primaryPath);
+            } catch (err1) {
+                console.warn('Primary CDN publicPath failed, trying fallback CDN...', err1);
+                statusTitle.textContent = 'Retrying with backup mirror...';
+                progressText.textContent = 'Connecting to fallback model server...';
+                resultBlob = await runRemoval(fallbackPath);
+            }
 
             this.processedBlob = resultBlob;
             
@@ -364,7 +413,15 @@ const RemoveBgTool = {
             Toast.success('Background removed successfully!');
         } catch (e) {
             console.error(e);
-            Toast.error('Failed to remove background: ' + (e.message || e));
+            const friendlyMsg = this.formatErrorMessage(e);
+            Toast.error('Failed to remove background: ' + friendlyMsg);
+            
+            const modelStatus = document.getElementById('rbg-model-status');
+            if (modelStatus) {
+                modelStatus.innerHTML = `<span style="color: #ef4444;"><b>Error:</b> ${friendlyMsg}. Check your connection and try again.</span>`;
+            }
+
+            processBtn.textContent = 'Retry Background Removal';
             processBtn.disabled = false;
         } finally {
             loadingOverlay.classList.add('hidden');
@@ -377,10 +434,45 @@ const RemoveBgTool = {
         ImageUtils.downloadBlob(this.processedBlob, newName);
     },
 
-    destroy() {
+    reset() {
         this.file = null;
         this.originalImg = null;
+        this.resultImg = null;
         this.processedBlob = null;
+        this.sliderPos = 0.5;
+        this.isDragging = false;
+        this.hoveringSlider = false;
+
+        if (this.canvas) {
+            const ctx = this.canvas.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
+        const workspace = document.getElementById('rbg-workspace');
+        const uploadZone = document.getElementById('rbg-upload-zone');
+        const fileInput = document.getElementById('rbg-file-input');
+        const processBtn = document.getElementById('rbg-process-btn');
+        const downloadBtn = document.getElementById('rbg-download-btn');
+        const modelStatus = document.getElementById('rbg-model-status');
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+        if (fileInput) fileInput.value = '';
+        if (downloadBtn) downloadBtn.disabled = true;
+        if (processBtn) {
+            processBtn.textContent = 'Remove Background';
+            processBtn.disabled = false;
+        }
+        if (modelStatus) {
+            modelStatus.innerHTML = '<b>Note:</b> The AI model downloads on first use (~40-80MB) and is cached for later.';
+        }
+    },
+
+    destroy() {
+        this.removeSliderEvents();
+        this.reset();
+        this.canvas = null;
+        this.ctx = null;
         // Keep library loaded for reuse across navigations within the session
     }
 };

@@ -21,6 +21,7 @@ const RotateTool = {
                     <div class="tool-layout">
                         <div class="controls-panel">
                             <h3>Transform</h3>
+                            <div id="rotate-file-info" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
                             
                             <div class="control-group">
                                 <div class="control-label">Rotate (90°)</div>
@@ -47,8 +48,9 @@ const RotateTool = {
                             </div>
 
                             <div class="actions-bar mt-24">
-                                <button id="rot-reset" class="btn btn-secondary w-full mb-16">Reset</button>
-                                <button id="rot-download" class="btn btn-primary w-full">Download Image</button>
+                                <button id="rot-download" class="btn btn-primary w-full mb-12">Download Image</button>
+                                <button id="rot-reset" class="btn btn-secondary w-full mb-12">Reset Transform</button>
+                                <button id="rot-change-btn" class="btn btn-outline w-full">Change Image</button>
                             </div>
                         </div>
 
@@ -71,6 +73,12 @@ const RotateTool = {
     flipV: 1,
 
     init(config) {
+        this.file = null;
+        this.originalImg = null;
+        this.angle = 0;
+        this.flipH = 1;
+        this.flipV = 1;
+
         setupUploadZone('rotate-upload-zone', 'rotate-file-input', async (files) => {
             if (files.length > 0) {
                 this.file = files[0];
@@ -79,12 +87,20 @@ const RotateTool = {
                     this.canvas = document.getElementById('rotate-canvas');
                     this.ctx = this.canvas.getContext('2d');
                     
+                    const fileInfo = document.getElementById('rotate-file-info');
+                    if (fileInfo) {
+                        fileInfo.textContent = `${this.file.name} (${this.originalImg.width} × ${this.originalImg.height}px)`;
+                        fileInfo.title = this.file.name;
+                    }
+
                     document.getElementById('rotate-upload-zone').classList.add('hidden');
                     document.getElementById('rotate-workspace').classList.add('active');
                     this.canvas.style.display = 'block';
                     
                     this.reset();
+                    Toast.success('Image loaded successfully');
                 } catch (e) {
+                    console.error(e);
                     Toast.error('Failed to load image');
                 }
             }
@@ -99,7 +115,7 @@ const RotateTool = {
         const angleVal = document.getElementById('rot-angle-val');
         
         angleSlider.addEventListener('input', (e) => {
-            const val = parseInt(e.target.value);
+            const val = parseInt(e.target.value) || 0;
             angleVal.textContent = `${val}°`;
             this.angle = val;
             this.renderCanvas();
@@ -107,6 +123,7 @@ const RotateTool = {
 
         document.getElementById('rot-reset').addEventListener('click', () => this.reset());
         document.getElementById('rot-download').addEventListener('click', () => this.download());
+        document.getElementById('rot-change-btn').addEventListener('click', () => this.resetTool());
     },
 
     updateTransform(rot, fh, fv) {
@@ -116,8 +133,10 @@ const RotateTool = {
         this.flipH *= fh;
         this.flipV *= fv;
         
-        document.getElementById('rot-angle').value = this.angle;
-        document.getElementById('rot-angle-val').textContent = `${this.angle}°`;
+        const slider = document.getElementById('rot-angle');
+        const valLabel = document.getElementById('rot-angle-val');
+        if (slider) slider.value = this.angle;
+        if (valLabel) valLabel.textContent = `${this.angle}°`;
         
         this.renderCanvas();
     },
@@ -127,14 +146,40 @@ const RotateTool = {
         this.flipH = 1;
         this.flipV = 1;
         
-        document.getElementById('rot-angle').value = 0;
-        document.getElementById('rot-angle-val').textContent = `0°`;
+        const slider = document.getElementById('rot-angle');
+        const valLabel = document.getElementById('rot-angle-val');
+        if (slider) slider.value = 0;
+        if (valLabel) valLabel.textContent = `0°`;
         
         this.renderCanvas();
     },
 
+    resetTool() {
+        this.file = null;
+        this.originalImg = null;
+        this.angle = 0;
+        this.flipH = 1;
+        this.flipV = 1;
+
+        const uploadZone = document.getElementById('rotate-upload-zone');
+        const workspace = document.getElementById('rotate-workspace');
+        const fileInput = document.getElementById('rotate-file-input');
+        const fileInfo = document.getElementById('rotate-file-info');
+        const canvas = document.getElementById('rotate-canvas');
+
+        if (fileInput) fileInput.value = '';
+        if (fileInfo) fileInfo.textContent = '';
+        if (canvas) {
+            canvas.style.display = 'none';
+            if (this.ctx) this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+    },
+
     renderCanvas() {
-        if (!this.originalImg) return;
+        if (!this.originalImg || !this.canvas || !this.ctx) return;
         
         const rad = this.angle * Math.PI / 180;
         
@@ -144,8 +189,8 @@ const RotateTool = {
         const absCos = Math.abs(Math.cos(rad));
         const absSin = Math.abs(Math.sin(rad));
         
-        const newW = w * absCos + h * absSin;
-        const newH = w * absSin + h * absCos;
+        const newW = Math.round(w * absCos + h * absSin);
+        const newH = Math.round(w * absSin + h * absCos);
         
         this.canvas.width = newW;
         this.canvas.height = newH;
@@ -153,6 +198,7 @@ const RotateTool = {
         this.ctx.clearRect(0, 0, newW, newH);
         
         // Translate to center, rotate, scale (flip), translate back
+        this.ctx.save();
         this.ctx.translate(newW / 2, newH / 2);
         this.ctx.rotate(rad);
         this.ctx.scale(this.flipH, this.flipV);
@@ -161,16 +207,22 @@ const RotateTool = {
         this.ctx.imageSmoothingEnabled = true;
         this.ctx.imageSmoothingQuality = 'high';
         this.ctx.drawImage(this.originalImg, 0, 0);
+        this.ctx.restore();
     },
 
     download() {
-        if (!this.originalImg) return;
+        if (!this.originalImg || !this.file || !this.canvas) {
+            Toast.error('Please upload an image first');
+            return;
+        }
         const newName = ImageUtils.getOutputFilename(this.file.name, 'rotated');
         ImageUtils.downloadCanvas(this.canvas, newName, this.file.type);
+        Toast.success('Rotated image downloaded!');
     },
 
     destroy() {
-        this.file = null;
-        this.originalImg = null;
+        this.resetTool();
+        this.canvas = null;
+        this.ctx = null;
     }
 };

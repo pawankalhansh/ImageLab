@@ -56,7 +56,8 @@ const UpscaleTool = {
                             </div>
 
                             <div class="actions-bar mt-24">
-                                <button id="upscale-btn" class="btn btn-primary w-full">Upscale Image</button>
+                                <button id="upscale-btn" class="btn btn-primary w-full mb-12">Upscale Image</button>
+                                <button id="upscale-reset-btn" class="btn btn-secondary w-full">Reset / Change Image</button>
                             </div>
                         </div>
 
@@ -90,31 +91,39 @@ const UpscaleTool = {
   isDragging: false,
   hoveringSlider: false,
 
+  _onMouseDown: null,
+  _onMouseMove: null,
+  _onMouseUp: null,
+  _onTouchStart: null,
+  _onTouchMove: null,
+  _onTouchEnd: null,
+
   async ensurePica() {
     if (this.picaInst) return this.picaInst;
+    if (window.pica) {
+      this.picaInst = window.pica();
+      return this.picaInst;
+    }
 
-    return new Promise((resolve, reject) => {
-      const loadScript = (src) =>
-        new Promise((res, rej) => {
-          if (document.querySelector(`script[src="${src}"]`)) return res();
-          const s = document.createElement("script");
-          s.src = src;
-          s.onload = res;
-          s.onerror = rej;
-          document.head.appendChild(s);
-        });
+    const cdnUrls = [
+      "https://cdn.jsdelivr.net/npm/pica@9.0.1/dist/pica.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/pica/9.0.1/pica.min.js",
+      "https://unpkg.com/pica@9.0.1/dist/pica.min.js"
+    ];
 
-      loadScript("https://cdn.jsdelivr.net/npm/pica@9.0.1/dist/pica.min.js")
-        .then(() => {
-          if (window.pica) {
-            this.picaInst = window.pica();
-            resolve(this.picaInst);
-          } else {
-            reject(new Error("Pica library failed to load"));
-          }
-        })
-        .catch(reject);
-    });
+    for (const url of cdnUrls) {
+      try {
+        await loadScript(url);
+        if (window.pica) {
+          this.picaInst = window.pica();
+          return this.picaInst;
+        }
+      } catch (err) {
+        console.warn("Failed to load Pica from:", url, err);
+      }
+    }
+
+    throw new Error("Pica library failed to load");
   },
 
   init(config) {
@@ -144,6 +153,7 @@ const UpscaleTool = {
         }
       },
     );
+
     const scaleBtns = document.querySelectorAll(
       "#upscale-scale-btns .preset-btn",
     );
@@ -183,6 +193,7 @@ const UpscaleTool = {
         }
       });
     });
+
     document.getElementById("upscale-btn").addEventListener("click", () => {
       if (this.processedBlob) {
         this.download();
@@ -191,11 +202,18 @@ const UpscaleTool = {
       }
     });
 
+    document.getElementById("upscale-reset-btn")?.addEventListener("click", () => {
+      this.reset();
+    });
+
     this.setupSliderEvents();
   },
 
   setupSliderEvents() {
+    this.removeSliderEvents();
+
     const getMousePos = (e) => {
+      if (!this.canvas) return 0.5;
       const rect = this.canvas.getBoundingClientRect();
       let clientX = e.clientX;
       if (e.touches && e.touches.length > 0) clientX = e.touches[0].clientX;
@@ -203,7 +221,7 @@ const UpscaleTool = {
     };
 
     const updateCursor = (e) => {
-      if (!this.resultImg) return;
+      if (!this.resultImg || !this.canvas) return;
       const pos = getMousePos(e);
       const sliderPixel = this.sliderPos;
       if (Math.abs(pos - sliderPixel) < 0.05) {
@@ -239,29 +257,45 @@ const UpscaleTool = {
       this.isDragging = false;
     };
 
-    document.addEventListener("mousedown", (e) => {
+    this._onMouseDown = (e) => {
       if (e.target.id === "upscale-canvas") startDrag(e);
-    });
-    document.addEventListener("mousemove", (e) => {
+    };
+    this._onMouseMove = (e) => {
       if (e.target.id === "upscale-canvas" || this.isDragging) onDrag(e);
-    });
-    document.addEventListener("mouseup", endDrag);
+    };
+    this._onMouseUp = endDrag;
 
-    document.addEventListener(
-      "touchstart",
-      (e) => {
-        if (e.target.id === "upscale-canvas") startDrag(e);
-      },
-      { passive: false },
-    );
-    document.addEventListener(
-      "touchmove",
-      (e) => {
-        if (this.isDragging) onDrag(e);
-      },
-      { passive: false },
-    );
-    document.addEventListener("touchend", endDrag);
+    this._onTouchStart = (e) => {
+      if (e.target.id === "upscale-canvas") startDrag(e);
+    };
+    this._onTouchMove = (e) => {
+      if (this.isDragging) onDrag(e);
+    };
+    this._onTouchEnd = endDrag;
+
+    document.addEventListener("mousedown", this._onMouseDown);
+    document.addEventListener("mousemove", this._onMouseMove);
+    document.addEventListener("mouseup", this._onMouseUp);
+
+    document.addEventListener("touchstart", this._onTouchStart, { passive: false });
+    document.addEventListener("touchmove", this._onTouchMove, { passive: false });
+    document.addEventListener("touchend", this._onTouchEnd);
+  },
+
+  removeSliderEvents() {
+    if (this._onMouseDown) document.removeEventListener("mousedown", this._onMouseDown);
+    if (this._onMouseMove) document.removeEventListener("mousemove", this._onMouseMove);
+    if (this._onMouseUp) document.removeEventListener("mouseup", this._onMouseUp);
+    if (this._onTouchStart) document.removeEventListener("touchstart", this._onTouchStart);
+    if (this._onTouchMove) document.removeEventListener("touchmove", this._onTouchMove);
+    if (this._onTouchEnd) document.removeEventListener("touchend", this._onTouchEnd);
+
+    this._onMouseDown = null;
+    this._onMouseMove = null;
+    this._onMouseUp = null;
+    this._onTouchStart = null;
+    this._onTouchMove = null;
+    this._onTouchEnd = null;
   },
 
   updateInfo() {
@@ -371,38 +405,41 @@ const UpscaleTool = {
       progressText.textContent = "Loading HQ Resampler...";
 
       let resultCanvas;
-      try {
-        const targetW = this.originalImg.width * this.scaleFactor;
-        const targetH = this.originalImg.height * this.scaleFactor;
+      const targetW = this.originalImg.width * this.scaleFactor;
+      const targetH = this.originalImg.height * this.scaleFactor;
 
-        if (this.upscaleMode === "artwork") {
-          statusTitle.textContent = "Vectorizing Edges...";
-          progressText.textContent = `Applying Edge-Enhancement (${this.scaleFactor}x)...`;
+      if (this.upscaleMode === "artwork") {
+        statusTitle.textContent = "Enhancing Edges...";
+        progressText.textContent = `Applying Edge-Preserving Upscale (${this.scaleFactor}x)...`;
 
-          // Step 1: Smooth upscale
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = targetW;
-          tempCanvas.height = targetH;
-          const tCtx = tempCanvas.getContext("2d");
-          tCtx.imageSmoothingEnabled = true;
-          tCtx.imageSmoothingQuality = "high";
-          tCtx.drawImage(this.originalImg, 0, 0, targetW, targetH);
+        try {
+          const pica = await this.ensurePica();
+          const srcCanvas = document.createElement("canvas");
+          srcCanvas.width = this.originalImg.width;
+          srcCanvas.height = this.originalImg.height;
+          srcCanvas.getContext("2d").drawImage(this.originalImg, 0, 0);
 
-          // Step 2: High contrast pass to sharpen edges perfectly
           const destCanvas = document.createElement("canvas");
           destCanvas.width = targetW;
           destCanvas.height = targetH;
-          const dCtx = destCanvas.getContext("2d");
-          dCtx.filter = "contrast(400%)";
-          dCtx.drawImage(tempCanvas, 0, 0);
 
+          // Artwork mode: tune Lanczos3 + unsharp filter for clean graphics without blowing out colors
+          await pica.resize(srcCanvas, destCanvas, {
+            unsharpAmount: 110,
+            unsharpRadius: 0.5,
+            unsharpThreshold: 2,
+          });
           resultCanvas = destCanvas;
-        } else {
+        } catch (picaError) {
+          console.warn("Pica unavailable, falling back to canvasUpscale:", picaError);
+          resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
+        }
+      } else {
+        statusTitle.textContent = "Upscaling image...";
+        progressText.textContent = `Applying Lanczos3 (${this.scaleFactor}x)...`;
+
+        try {
           const pica = await this.ensurePica();
-
-          statusTitle.textContent = "Upscaling image...";
-          progressText.textContent = `Applying Lanczos3 (${this.scaleFactor}x)...`;
-
           const srcCanvas = document.createElement("canvas");
           srcCanvas.width = this.originalImg.width;
           srcCanvas.height = this.originalImg.height;
@@ -413,24 +450,15 @@ const UpscaleTool = {
           destCanvas.height = targetH;
 
           await pica.resize(srcCanvas, destCanvas, {
-            unsharpAmount: 80, // Lower amount to prevent halo ringing
+            unsharpAmount: 80,
             unsharpRadius: 0.6,
             unsharpThreshold: 0,
           });
-
           resultCanvas = destCanvas;
+        } catch (picaError) {
+          console.warn("Pica unavailable, falling back to canvasUpscale:", picaError);
+          resultCanvas = canvasUpscale(this.originalImg, this.scaleFactor);
         }
-      } catch (picaError) {
-        console.error("Pica Error:", picaError);
-        statusTitle.textContent = "Upscaling Failed";
-        progressText.textContent = picaError.message || String(picaError);
-        progressText.style.color = "#ef4444"; // Red error text
-
-        // Keep the loading overlay visible for 3 seconds so the user can read the error
-        await new Promise((r) => setTimeout(r, 4000));
-        throw new Error(
-          "HQ Upscaling failed: " + (picaError.message || String(picaError)),
-        );
       }
 
       this.resultImg = resultCanvas;
@@ -477,9 +505,40 @@ const UpscaleTool = {
     ImageUtils.downloadBlob(this.processedBlob, newName);
   },
 
-  destroy() {
+  reset() {
     this.file = null;
     this.originalImg = null;
+    this.resultImg = null;
     this.processedBlob = null;
+    this.sliderPos = 0.5;
+    this.isDragging = false;
+    this.hoveringSlider = false;
+    if (this.canvas) {
+      const ctx = this.canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    const uploadZone = document.getElementById('upscale-upload-zone');
+    const workspace = document.getElementById('upscale-workspace');
+    const fileInput = document.getElementById('upscale-file-input');
+    const btn = document.getElementById('upscale-btn');
+    if (uploadZone) uploadZone.classList.remove('hidden');
+    if (workspace) workspace.classList.remove('active');
+    if (fileInput) fileInput.value = '';
+    if (btn) {
+      btn.textContent = 'Upscale Image';
+      btn.className = 'btn btn-primary w-full mb-12';
+      btn.disabled = false;
+    }
+    const origSize = document.getElementById('upscale-orig-size');
+    const newSize = document.getElementById('upscale-new-size');
+    if (origSize) origSize.textContent = '-';
+    if (newSize) newSize.textContent = '-';
+  },
+
+  destroy() {
+    this.removeSliderEvents();
+    this.reset();
+    this.canvas = null;
+    this.ctx = null;
   },
 };

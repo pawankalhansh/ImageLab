@@ -35,8 +35,9 @@ const BlurTool = {
                             </p>
 
                             <div class="actions-bar mt-24">
+                                <button id="blur-btn" class="btn btn-primary w-full mb-12">Apply Blur</button>
                                 <button id="blur-clear" class="btn btn-secondary w-full mb-12">Clear All Regions</button>
-                                <button id="blur-btn" class="btn btn-primary w-full">Apply Blur</button>
+                                <button id="blur-reset" class="btn btn-outline w-full">Reset / Change Image</button>
                             </div>
                             
                             <div class="mt-24" id="blur-download-wrap" style="display: none;">
@@ -45,7 +46,7 @@ const BlurTool = {
                         </div>
 
                         <div class="preview-container flex-col" style="overflow: hidden;">
-                            <div class="blur-canvas-container" id="blur-container" style="cursor: crosshair;">
+                            <div class="blur-canvas-container" id="blur-container" style="cursor: crosshair; touch-action: none;">
                                 <canvas id="blur-canvas"></canvas>
                                 <div id="blur-rect" class="blur-rect" style="display:none;"></div>
                             </div>
@@ -69,6 +70,13 @@ const BlurTool = {
     startX: 0,
     startY: 0,
     scale: 1,
+
+    _onMouseDown: null,
+    _onMouseMove: null,
+    _onMouseUp: null,
+    _onTouchStart: null,
+    _onTouchMove: null,
+    _onTouchEnd: null,
 
     init(config) {
         setupUploadZone('blur-upload-zone', 'blur-file-input', async (files) => {
@@ -100,10 +108,13 @@ const BlurTool = {
         document.getElementById('blur-clear').addEventListener('click', () => this.clearRegions());
         document.getElementById('blur-btn').addEventListener('click', () => this.applyBlur());
         document.getElementById('blur-download').addEventListener('click', () => this.download());
+        document.getElementById('blur-reset')?.addEventListener('click', () => this.reset());
     },
 
     setupCanvas() {
-        const maxWidth = this.container.parentElement.clientWidth - 40;
+        if (!this.container || !this.originalImg) return;
+        const parent = this.container.parentElement;
+        const maxWidth = (parent ? parent.clientWidth : 800) - 40;
         const maxHeight = 600;
         
         const w = this.originalImg.width;
@@ -111,35 +122,71 @@ const BlurTool = {
         
         this.scale = Math.min(1, maxWidth / w, maxHeight / h);
         
-        this.canvas.width = w * this.scale;
-        this.canvas.height = h * this.scale;
+        this.canvas.width = Math.round(w * this.scale);
+        this.canvas.height = Math.round(h * this.scale);
         
         this.drawAll();
     },
 
     setupEvents() {
-        this.container.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        window.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        window.addEventListener('mouseup', () => this.onMouseUp());
+        this.removeEvents();
+
+        this._onMouseDown = (e) => this.onMouseDown(e);
+        this._onMouseMove = (e) => this.onMouseMove(e);
+        this._onMouseUp = () => this.onMouseUp();
+        this._onTouchStart = (e) => this.onTouchStart(e);
+        this._onTouchMove = (e) => this.onTouchMove(e);
+        this._onTouchEnd = (e) => this.onTouchEnd(e);
+
+        if (this.container) {
+            this.container.addEventListener('mousedown', this._onMouseDown);
+            this.container.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        }
+        window.addEventListener('mousemove', this._onMouseMove);
+        window.addEventListener('mouseup', this._onMouseUp);
+        window.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        window.addEventListener('touchend', this._onTouchEnd);
+        window.addEventListener('touchcancel', this._onTouchEnd);
     },
 
-    onMouseDown(e) {
-        if (e.target !== this.canvas && e.target !== this.rectEl) return;
-        
+    removeEvents() {
+        if (this.container) {
+            if (this._onMouseDown) this.container.removeEventListener('mousedown', this._onMouseDown);
+            if (this._onTouchStart) this.container.removeEventListener('touchstart', this._onTouchStart);
+        }
+        if (this._onMouseMove) window.removeEventListener('mousemove', this._onMouseMove);
+        if (this._onMouseUp) window.removeEventListener('mouseup', this._onMouseUp);
+        if (this._onTouchMove) window.removeEventListener('touchmove', this._onTouchMove);
+        if (this._onTouchEnd) {
+            window.removeEventListener('touchend', this._onTouchEnd);
+            window.removeEventListener('touchcancel', this._onTouchEnd);
+        }
+
+        this._onMouseDown = null;
+        this._onMouseMove = null;
+        this._onMouseUp = null;
+        this._onTouchStart = null;
+        this._onTouchMove = null;
+        this._onTouchEnd = null;
+    },
+
+    startDrawing(clientX, clientY) {
+        if (!this.canvas) return;
         const rect = this.canvas.getBoundingClientRect();
-        this.startX = e.clientX - rect.left;
-        this.startY = e.clientY - rect.top;
+        this.startX = clientX - rect.left;
+        this.startY = clientY - rect.top;
         this.isDrawing = true;
-        this.rectEl.style.display = 'block';
-        this.updateRect(this.startX, this.startY, 0, 0);
+        if (this.rectEl) {
+            this.rectEl.style.display = 'block';
+            this.updateRect(this.startX, this.startY, 0, 0);
+        }
     },
 
-    onMouseMove(e) {
-        if (!this.isDrawing) return;
-        
+    moveDrawing(clientX, clientY) {
+        if (!this.isDrawing || !this.canvas) return;
         const rect = this.canvas.getBoundingClientRect();
-        const currentX = Math.max(0, Math.min(e.clientX - rect.left, this.canvas.width));
-        const currentY = Math.max(0, Math.min(e.clientY - rect.top, this.canvas.height));
+        const currentX = Math.max(0, Math.min(clientX - rect.left, this.canvas.width));
+        const currentY = Math.max(0, Math.min(clientY - rect.top, this.canvas.height));
         
         const w = currentX - this.startX;
         const h = currentY - this.startY;
@@ -147,30 +194,68 @@ const BlurTool = {
         this.updateRect(this.startX, this.startY, w, h);
     },
 
-    onMouseUp() {
+    stopDrawing() {
         if (this.isDrawing) {
             this.isDrawing = false;
             
-            const left = parseFloat(this.rectEl.style.left);
-            const top = parseFloat(this.rectEl.style.top);
-            const width = parseFloat(this.rectEl.style.width);
-            const height = parseFloat(this.rectEl.style.height);
-            
-            if (width > 10 && height > 10) {
-                // Save region in original image coordinates
-                this.regions.push({
-                    x: Math.round(left / this.scale),
-                    y: Math.round(top / this.scale),
-                    w: Math.round(width / this.scale),
-                    h: Math.round(height / this.scale)
-                });
+            if (this.rectEl) {
+                const left = parseFloat(this.rectEl.style.left) || 0;
+                const top = parseFloat(this.rectEl.style.top) || 0;
+                const width = parseFloat(this.rectEl.style.width) || 0;
+                const height = parseFloat(this.rectEl.style.height) || 0;
                 
-                // Show temporary overlay on canvas
-                this.drawAll();
+                if (width > 10 && height > 10) {
+                    this.regions.push({
+                        x: Math.round(left / this.scale),
+                        y: Math.round(top / this.scale),
+                        w: Math.round(width / this.scale),
+                        h: Math.round(height / this.scale)
+                    });
+                    
+                    this.drawAll();
+                }
+                
+                this.rectEl.style.display = 'none';
             }
-            
-            this.rectEl.style.display = 'none';
-            document.getElementById('blur-download-wrap').style.display = 'none';
+            const dlWrap = document.getElementById('blur-download-wrap');
+            if (dlWrap) dlWrap.style.display = 'none';
+        }
+    },
+
+    onMouseDown(e) {
+        if (e.target !== this.canvas && e.target !== this.rectEl) return;
+        this.startDrawing(e.clientX, e.clientY);
+    },
+
+    onMouseMove(e) {
+        if (!this.isDrawing) return;
+        this.moveDrawing(e.clientX, e.clientY);
+    },
+
+    onMouseUp() {
+        this.stopDrawing();
+    },
+
+    onTouchStart(e) {
+        if (e.target !== this.canvas && e.target !== this.rectEl) return;
+        if (e.touches && e.touches.length > 0) {
+            if (e.cancelable) e.preventDefault();
+            this.startDrawing(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    },
+
+    onTouchMove(e) {
+        if (!this.isDrawing) return;
+        if (e.touches && e.touches.length > 0) {
+            if (e.cancelable) e.preventDefault();
+            this.moveDrawing(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    },
+
+    onTouchEnd(e) {
+        if (this.isDrawing) {
+            if (e && e.cancelable) e.preventDefault();
+            this.stopDrawing();
         }
     },
 
@@ -244,9 +329,29 @@ const BlurTool = {
         ImageUtils.downloadCanvas(this.resultCanvas, newName, this.file.type);
     },
 
-    destroy() {
+    reset() {
+        this.removeEvents();
         this.file = null;
         this.originalImg = null;
+        this.resultCanvas = null;
         this.regions = [];
+        this.isDrawing = false;
+        if (this.rectEl) this.rectEl.style.display = 'none';
+        const uploadZone = document.getElementById('blur-upload-zone');
+        const workspace = document.getElementById('blur-workspace');
+        const fileInput = document.getElementById('blur-file-input');
+        const dlWrap = document.getElementById('blur-download-wrap');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+        if (workspace) workspace.classList.remove('active');
+        if (fileInput) fileInput.value = '';
+        if (dlWrap) dlWrap.style.display = 'none';
+    },
+
+    destroy() {
+        this.reset();
+        this.canvas = null;
+        this.ctx = null;
+        this.container = null;
+        this.rectEl = null;
     }
 };

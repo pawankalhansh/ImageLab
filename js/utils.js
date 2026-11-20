@@ -130,6 +130,19 @@ const ImageUtils = {
     },
 
     /**
+     * Escape HTML to prevent injection
+     */
+    escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
+    /**
      * Apply CSS filters to a canvas via an offscreen canvas
      */
     applyFilters(sourceCanvas, filters) {

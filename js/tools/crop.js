@@ -21,6 +21,7 @@ const CropTool = {
                     <div class="tool-layout">
                         <div class="controls-panel">
                             <h3>Crop Options</h3>
+                            <div id="crop-file-info" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
                             
                             <div class="control-group">
                                 <div class="control-label">Aspect Ratio</div>
@@ -28,6 +29,7 @@ const CropTool = {
                                     <button class="preset-btn crop-ratio active" data-val="free">Free</button>
                                     <button class="preset-btn crop-ratio" data-val="1">1:1</button>
                                     <button class="preset-btn crop-ratio" data-val="1.777">16:9</button>
+                                    <button class="preset-btn crop-ratio" data-val="0.5625">9:16</button>
                                     <button class="preset-btn crop-ratio" data-val="1.333">4:3</button>
                                     <button class="preset-btn crop-ratio" data-val="1.5">3:2</button>
                                 </div>
@@ -57,17 +59,18 @@ const CropTool = {
                             </div>
 
                             <div class="actions-bar mt-24">
-                                <button id="crop-btn" class="btn btn-primary w-full">Apply Crop</button>
+                                <button id="crop-btn" class="btn btn-primary w-full mb-12">Apply Crop</button>
+                                <button id="crop-change-btn" class="btn btn-outline w-full">Change Image</button>
                             </div>
                         </div>
 
                         <div class="preview-container flex-col">
-                            <div class="crop-container" id="crop-container">
+                            <div class="crop-container" id="crop-container" style="touch-action: none; user-select: none;">
                                 <canvas id="crop-canvas"></canvas>
                                 <div id="crop-selection" class="crop-selection" style="display:none;"></div>
                             </div>
-                            <div class="actions-bar mt-16" id="crop-download-wrap" style="display:none;">
-                                <button id="crop-reset" class="btn btn-secondary">Reset</button>
+                            <div class="actions-bar mt-16" id="crop-download-wrap" style="display:none; gap: 12px;">
+                                <button id="crop-reset" class="btn btn-secondary">Reset Crop</button>
                                 <button id="crop-download" class="btn btn-success">Download Cropped Image</button>
                             </div>
                         </div>
@@ -83,6 +86,7 @@ const CropTool = {
     ctx: null,
     selection: null,
     container: null,
+    croppedCanvas: null,
     
     isDragging: false,
     startX: 0,
@@ -93,16 +97,40 @@ const CropTool = {
     ratio: 'free',
     scale: 1,
 
+    // Bound listeners for leak-free cleanup
+    _boundMouseDown: null,
+    _boundTouchStart: null,
+    _boundMouseMove: null,
+    _boundTouchMove: null,
+    _boundMouseUp: null,
+    _boundTouchEnd: null,
+
     init(config) {
+        this.removeListeners();
+        this.file = null;
+        this.originalImg = null;
+        this.croppedCanvas = null;
+        this.ratio = 'free';
+        this.scale = 1;
+
         setupUploadZone('crop-upload-zone', 'crop-file-input', async (files) => {
             if (files.length > 0) {
                 this.file = files[0];
                 try {
                     this.originalImg = await ImageUtils.loadImage(this.file);
+                    
+                    const fileInfo = document.getElementById('crop-file-info');
+                    if (fileInfo) {
+                        fileInfo.textContent = `${this.file.name} (${this.originalImg.width} × ${this.originalImg.height}px)`;
+                        fileInfo.title = this.file.name;
+                    }
+
                     document.getElementById('crop-upload-zone').classList.add('hidden');
                     document.getElementById('crop-workspace').classList.add('active');
                     this.setupCanvas();
+                    Toast.success('Image loaded for cropping');
                 } catch (e) {
+                    console.error(e);
                     Toast.error('Failed to load image');
                 }
             }
@@ -113,9 +141,21 @@ const CropTool = {
         this.container = document.getElementById('crop-container');
         this.selection = document.getElementById('crop-selection');
 
-        this.container.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        window.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        window.addEventListener('mouseup', () => this.onMouseUp());
+        // Setup pointer handlers (mouse + touch)
+        this._boundMouseDown = (e) => this.onPointerDown(e);
+        this._boundTouchStart = (e) => this.onPointerDown(e);
+        this._boundMouseMove = (e) => this.onPointerMove(e);
+        this._boundTouchMove = (e) => this.onPointerMove(e);
+        this._boundMouseUp = (e) => this.onPointerUp(e);
+        this._boundTouchEnd = (e) => this.onPointerUp(e);
+
+        this.container.addEventListener('mousedown', this._boundMouseDown);
+        this.container.addEventListener('touchstart', this._boundTouchStart, { passive: false });
+        window.addEventListener('mousemove', this._boundMouseMove);
+        window.addEventListener('touchmove', this._boundTouchMove, { passive: false });
+        window.addEventListener('mouseup', this._boundMouseUp);
+        window.addEventListener('touchend', this._boundTouchEnd);
+        window.addEventListener('touchcancel', this._boundTouchEnd);
 
         document.querySelectorAll('.crop-ratio').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -129,23 +169,48 @@ const CropTool = {
         document.getElementById('crop-btn').addEventListener('click', () => this.applyCrop());
         document.getElementById('crop-reset').addEventListener('click', () => this.resetCrop());
         document.getElementById('crop-download').addEventListener('click', () => this.downloadCrop());
+        document.getElementById('crop-change-btn').addEventListener('click', () => this.resetTool());
         
         ['crop-x', 'crop-y', 'crop-w', 'crop-h'].forEach(id => {
             document.getElementById(id).addEventListener('change', () => this.updateSelectionFromInputs());
         });
     },
 
+    removeListeners() {
+        if (this._boundMouseDown && this.container) {
+            this.container.removeEventListener('mousedown', this._boundMouseDown);
+        }
+        if (this._boundTouchStart && this.container) {
+            this.container.removeEventListener('touchstart', this._boundTouchStart);
+        }
+        if (this._boundMouseMove) {
+            window.removeEventListener('mousemove', this._boundMouseMove);
+        }
+        if (this._boundTouchMove) {
+            window.removeEventListener('touchmove', this._boundTouchMove);
+        }
+        if (this._boundMouseUp) {
+            window.removeEventListener('mouseup', this._boundMouseUp);
+        }
+        if (this._boundTouchEnd) {
+            window.removeEventListener('touchend', this._boundTouchEnd);
+            window.removeEventListener('touchcancel', this._boundTouchEnd);
+        }
+    },
+
     setupCanvas() {
-        const maxWidth = this.container.parentElement.clientWidth - 40;
+        if (!this.originalImg || !this.canvas) return;
+        const parentW = this.container.parentElement ? this.container.parentElement.clientWidth : 800;
+        const maxWidth = Math.max(300, parentW - 40);
         const maxHeight = 500;
         
-        let w = this.originalImg.width;
-        let h = this.originalImg.height;
+        const w = this.originalImg.width;
+        const h = this.originalImg.height;
         
         this.scale = Math.min(1, maxWidth / w, maxHeight / h);
         
-        this.canvas.width = w * this.scale;
-        this.canvas.height = h * this.scale;
+        this.canvas.width = Math.round(w * this.scale);
+        this.canvas.height = Math.round(h * this.scale);
         
         this.ctx.drawImage(this.originalImg, 0, 0, this.canvas.width, this.canvas.height);
         this.selection.style.display = 'none';
@@ -156,95 +221,186 @@ const CropTool = {
         document.getElementById('crop-y').value = 0;
     },
 
-    onMouseDown(e) {
-        if (e.target !== this.canvas && e.target !== this.selection) return;
-        
+    getEventPos(e) {
+        if (!this.canvas) return { x: 0, y: 0 };
         const rect = this.canvas.getBoundingClientRect();
-        this.startX = e.clientX - rect.left;
-        this.startY = e.clientY - rect.top;
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        }
+
+        return {
+            x: Math.max(0, Math.min(clientX - rect.left, this.canvas.width)),
+            y: Math.max(0, Math.min(clientY - rect.top, this.canvas.height))
+        };
+    },
+
+    onPointerDown(e) {
+        if (!this.canvas || !this.originalImg) return;
+        if (e.target !== this.canvas && e.target !== this.selection) return;
+        if (e.cancelable) e.preventDefault();
+        
+        const pos = this.getEventPos(e);
+        this.startX = pos.x;
+        this.startY = pos.y;
         this.isDragging = true;
         this.selection.style.display = 'block';
         this.updateSelectionBox(this.startX, this.startY, 0, 0);
     },
 
-    onMouseMove(e) {
-        if (!this.isDragging) return;
+    onPointerMove(e) {
+        if (!this.isDragging || !this.canvas) return;
+        if (e.cancelable) e.preventDefault();
         
-        const rect = this.canvas.getBoundingClientRect();
-        this.currentX = Math.max(0, Math.min(e.clientX - rect.left, this.canvas.width));
-        this.currentY = Math.max(0, Math.min(e.clientY - rect.top, this.canvas.height));
+        const pos = this.getEventPos(e);
+        this.currentX = pos.x;
+        this.currentY = pos.y;
         
-        let w = this.currentX - this.startX;
-        let h = this.currentY - this.startY;
+        const rawW = this.currentX - this.startX;
+        const rawH = this.currentY - this.startY;
+        
+        let w = rawW;
+        let h = rawH;
         
         if (this.ratio !== 'free') {
             const r = parseFloat(this.ratio);
-            if (Math.abs(w) / Math.abs(h) > r) {
-                h = Math.sign(h) * Math.abs(w) / r;
-            } else {
-                w = Math.sign(w) * Math.abs(h) * r;
+            if (!isNaN(r) && r > 0) {
+                const signX = rawW >= 0 ? 1 : -1;
+                const signY = rawH >= 0 ? 1 : -1;
+                
+                let absW = Math.abs(rawW);
+                let absH = Math.abs(rawH);
+                
+                if (absW / absH > r) {
+                    absH = absW / r;
+                } else {
+                    absW = absH * r;
+                }
+                
+                // Bounds clamp so crop box stays strictly inside the canvas
+                const maxW = signX > 0 ? (this.canvas.width - this.startX) : this.startX;
+                const maxH = signY > 0 ? (this.canvas.height - this.startY) : this.startY;
+                
+                if (absW > maxW) {
+                    absW = maxW;
+                    absH = absW / r;
+                }
+                if (absH > maxH) {
+                    absH = maxH;
+                    absW = absH * r;
+                }
+                
+                w = signX * absW;
+                h = signY * absH;
             }
         }
         
         this.updateSelectionBox(this.startX, this.startY, w, h);
     },
 
-    onMouseUp() {
-        if (this.isDragging) {
-            this.isDragging = false;
-            // Update inputs
-            const left = parseFloat(this.selection.style.left);
-            const top = parseFloat(this.selection.style.top);
-            const width = parseFloat(this.selection.style.width);
-            const height = parseFloat(this.selection.style.height);
+    onPointerUp(e) {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+        
+        const left = parseFloat(this.selection.style.left) || 0;
+        const top = parseFloat(this.selection.style.top) || 0;
+        const width = parseFloat(this.selection.style.width) || 0;
+        const height = parseFloat(this.selection.style.height) || 0;
+        
+        if (width > 5 && height > 5 && this.scale > 0 && this.originalImg) {
+            let x = Math.max(0, Math.round(left / this.scale));
+            let y = Math.max(0, Math.round(top / this.scale));
+            let w = Math.max(1, Math.round(width / this.scale));
+            let h = Math.max(1, Math.round(height / this.scale));
             
-            if (width > 5 && height > 5) {
-                document.getElementById('crop-x').value = Math.round(left / this.scale);
-                document.getElementById('crop-y').value = Math.round(top / this.scale);
-                document.getElementById('crop-w').value = Math.round(width / this.scale);
-                document.getElementById('crop-h').value = Math.round(height / this.scale);
-            } else {
-                this.selection.style.display = 'none';
-            }
+            if (x + w > this.originalImg.width) w = Math.max(1, this.originalImg.width - x);
+            if (y + h > this.originalImg.height) h = Math.max(1, this.originalImg.height - y);
+            
+            document.getElementById('crop-x').value = x;
+            document.getElementById('crop-y').value = y;
+            document.getElementById('crop-w').value = w;
+            document.getElementById('crop-h').value = h;
+        } else {
+            this.selection.style.display = 'none';
         }
     },
 
     updateSelectionBox(x, y, w, h) {
-        const left = w < 0 ? x + w : x;
-        const top = h < 0 ? y + h : y;
-        const width = Math.abs(w);
-        const height = Math.abs(h);
+        if (!this.canvas) return;
+        let left = w < 0 ? x + w : x;
+        let top = h < 0 ? y + h : y;
+        let width = Math.abs(w);
+        let height = Math.abs(h);
         
-        this.selection.style.left = `${left}px`;
-        this.selection.style.top = `${top}px`;
-        this.selection.style.width = `${width}px`;
-        this.selection.style.height = `${height}px`;
+        // Strict boundary checking against canvas edges
+        left = Math.max(0, Math.min(this.canvas.width, left));
+        top = Math.max(0, Math.min(this.canvas.height, top));
+        width = Math.min(width, this.canvas.width - left);
+        height = Math.min(height, this.canvas.height - top);
+        
+        this.selection.style.left = `${Math.round(left)}px`;
+        this.selection.style.top = `${Math.round(top)}px`;
+        this.selection.style.width = `${Math.round(width)}px`;
+        this.selection.style.height = `${Math.round(height)}px`;
     },
     
     updateSelectionFromInputs() {
-        const x = parseInt(document.getElementById('crop-x').value) * this.scale;
-        const y = parseInt(document.getElementById('crop-y').value) * this.scale;
-        const w = parseInt(document.getElementById('crop-w').value) * this.scale;
-        const h = parseInt(document.getElementById('crop-h').value) * this.scale;
+        if (!this.originalImg || !this.scale) return;
+        
+        let x = parseInt(document.getElementById('crop-x').value);
+        let y = parseInt(document.getElementById('crop-y').value);
+        let w = parseInt(document.getElementById('crop-w').value);
+        let h = parseInt(document.getElementById('crop-h').value);
+        
+        if (isNaN(x) || x < 0) x = 0;
+        if (isNaN(y) || y < 0) y = 0;
+        if (isNaN(w) || w < 1) w = 1;
+        if (isNaN(h) || h < 1) h = 1;
+        
+        if (x >= this.originalImg.width) x = Math.max(0, this.originalImg.width - 1);
+        if (y >= this.originalImg.height) y = Math.max(0, this.originalImg.height - 1);
+        if (x + w > this.originalImg.width) w = Math.max(1, this.originalImg.width - x);
+        if (y + h > this.originalImg.height) h = Math.max(1, this.originalImg.height - y);
+        
+        document.getElementById('crop-x').value = x;
+        document.getElementById('crop-y').value = y;
+        document.getElementById('crop-w').value = w;
+        document.getElementById('crop-h').value = h;
         
         this.selection.style.display = 'block';
-        this.updateSelectionBox(x, y, w, h);
+        this.updateSelectionBox(x * this.scale, y * this.scale, w * this.scale, h * this.scale);
     },
 
-    croppedCanvas: null,
-
     applyCrop() {
+        if (!this.originalImg) return;
         if (this.selection.style.display === 'none') {
             Toast.error('Please make a selection first');
             return;
         }
 
-        const x = parseInt(document.getElementById('crop-x').value);
-        const y = parseInt(document.getElementById('crop-y').value);
-        const w = parseInt(document.getElementById('crop-w').value);
-        const h = parseInt(document.getElementById('crop-h').value);
+        let x = parseInt(document.getElementById('crop-x').value);
+        let y = parseInt(document.getElementById('crop-y').value);
+        let w = parseInt(document.getElementById('crop-w').value);
+        let h = parseInt(document.getElementById('crop-h').value);
 
-        if (w <= 0 || h <= 0) return;
+        if (isNaN(x) || x < 0) x = 0;
+        if (isNaN(y) || y < 0) y = 0;
+        if (isNaN(w) || w <= 0) w = 0;
+        if (isNaN(h) || h <= 0) h = 0;
+
+        if (x + w > this.originalImg.width) w = Math.max(0, this.originalImg.width - x);
+        if (y + h > this.originalImg.height) h = Math.max(0, this.originalImg.height - y);
+
+        if (w <= 0 || h <= 0) {
+            Toast.error('Invalid crop dimensions');
+            return;
+        }
 
         this.croppedCanvas = document.createElement('canvas');
         this.croppedCanvas.width = w;
@@ -254,8 +410,8 @@ const CropTool = {
         ctx.drawImage(this.originalImg, x, y, w, h, 0, 0, w, h);
         
         // Show cropped result in the display canvas
-        this.canvas.width = w * this.scale;
-        this.canvas.height = h * this.scale;
+        this.canvas.width = Math.round(w * this.scale);
+        this.canvas.height = Math.round(h * this.scale);
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.drawImage(this.croppedCanvas, 0, 0, this.canvas.width, this.canvas.height);
         
@@ -266,19 +422,47 @@ const CropTool = {
 
     resetCrop() {
         this.setupCanvas();
-        document.getElementById('crop-download-wrap').style.display = 'none';
+        const dlWrap = document.getElementById('crop-download-wrap');
+        if (dlWrap) dlWrap.style.display = 'none';
         this.croppedCanvas = null;
     },
 
+    resetTool() {
+        this.isDragging = false;
+        this.file = null;
+        this.originalImg = null;
+        this.croppedCanvas = null;
+
+        const uploadZone = document.getElementById('crop-upload-zone');
+        const workspace = document.getElementById('crop-workspace');
+        const fileInput = document.getElementById('crop-file-input');
+        const fileInfo = document.getElementById('crop-file-info');
+        const dlWrap = document.getElementById('crop-download-wrap');
+
+        if (fileInput) fileInput.value = '';
+        if (fileInfo) fileInfo.textContent = '';
+        if (dlWrap) dlWrap.style.display = 'none';
+        if (this.selection) this.selection.style.display = 'none';
+        if (this.ctx && this.canvas) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+    },
+
     downloadCrop() {
-        if (this.croppedCanvas) {
+        if (this.croppedCanvas && this.file) {
             const newName = ImageUtils.getOutputFilename(this.file.name, 'cropped');
             ImageUtils.downloadCanvas(this.croppedCanvas, newName, this.file.type);
+        } else {
+            Toast.error('Please apply crop first');
         }
     },
 
     destroy() {
-        this.file = null;
-        this.originalImg = null;
+        this.removeListeners();
+        this.resetTool();
+        this.canvas = null;
+        this.ctx = null;
+        this.selection = null;
+        this.container = null;
     }
 };

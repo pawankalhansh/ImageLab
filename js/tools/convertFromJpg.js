@@ -33,8 +33,17 @@ const ConvertFromJpgTool = {
                                 </select>
                             </div>
 
+                            <div class="control-group" id="cfj-quality-group" style="display: none;">
+                                <div class="control-label">
+                                    <span>WebP Quality</span>
+                                    <span class="control-value" id="cfj-quality-val">90%</span>
+                                </div>
+                                <input type="range" id="cfj-quality" min="1" max="100" value="90">
+                            </div>
+
                             <div class="actions-bar mt-24">
-                                <button id="cfj-btn" class="btn btn-primary w-full">Convert from JPG</button>
+                                <button id="cfj-btn" class="btn btn-primary w-full mb-12">Convert from JPG</button>
+                                <button id="cfj-reset-btn" class="btn btn-outline w-full">Reset / Change Images</button>
                             </div>
                         </div>
 
@@ -51,9 +60,11 @@ const ConvertFromJpgTool = {
     },
 
     files: [],
+    convertedResults: [],
     
     init(config) {
         this.files = [];
+        this.convertedResults = [];
         const uploadZone = document.getElementById('cfj-upload-zone');
         const workspace = document.getElementById('cfj-workspace');
         
@@ -68,14 +79,61 @@ const ConvertFromJpgTool = {
             }
         });
 
+        const formatSelect = document.getElementById('cfj-format');
+        const qualityGroup = document.getElementById('cfj-quality-group');
+        const qualitySlider = document.getElementById('cfj-quality');
+        const qualityVal = document.getElementById('cfj-quality-val');
+
+        if (formatSelect && qualityGroup) {
+            formatSelect.addEventListener('change', () => {
+                qualityGroup.style.display = formatSelect.value === 'image/webp' ? 'block' : 'none';
+            });
+        }
+
+        if (qualitySlider && qualityVal) {
+            qualitySlider.addEventListener('input', (e) => {
+                qualityVal.textContent = `${e.target.value}%`;
+            });
+        }
+
         document.getElementById('cfj-btn').addEventListener('click', () => this.convertAll());
         document.getElementById('cfj-download-all').addEventListener('click', () => this.downloadAll());
+        document.getElementById('cfj-reset-btn').addEventListener('click', () => this.resetTool());
     },
 
-    convertedResults: [],
+    resetTool() {
+        this.files = [];
+        this.convertedResults = [];
+
+        const uploadZone = document.getElementById('cfj-upload-zone');
+        const workspace = document.getElementById('cfj-workspace');
+        const fileInput = document.getElementById('cfj-file-input');
+        const resultsContainer = document.getElementById('cfj-results');
+        const fileList = document.getElementById('cfj-file-list');
+
+        if (fileInput) fileInput.value = '';
+        if (fileList) fileList.innerHTML = '';
+        if (resultsContainer) resultsContainer.style.display = 'none';
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+
+        const btn = document.getElementById('cfj-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Convert from JPG';
+        }
+    },
 
     async convertAll() {
+        if (!this.files.length) {
+            Toast.error('No images to convert');
+            return;
+        }
+
         const formatOpt = document.getElementById('cfj-format').value;
+        const qualitySlider = document.getElementById('cfj-quality');
+        const quality = qualitySlider ? (parseInt(qualitySlider.value) / 100) : 0.92;
         const resultsContainer = document.getElementById('cfj-results');
         const fileList = document.getElementById('cfj-file-list');
         
@@ -94,22 +152,48 @@ const ConvertFromJpgTool = {
                 const img = await ImageUtils.loadImage(file);
                 const { canvas } = ImageUtils.drawToCanvas(img, img.width, img.height);
                 
-                const blob = await ImageUtils.canvasToBlob(canvas, formatOpt, 0.92);
+                const blob = await ImageUtils.canvasToBlob(canvas, formatOpt, quality);
                 const ext = ImageUtils.getExtFromMime(formatOpt);
                 const newName = ImageUtils.getOutputFilename(file.name, 'converted', ext);
                 
                 this.convertedResults.push({ blob, filename: newName });
                 
-                fileList.innerHTML += `
-                    <div style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${file.name}</span>
-                        <div class="flex gap-12 items-center">
-                            <span style="color: var(--text-muted); font-size: 0.8rem; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px;">JPG → ${ext.toUpperCase()}</span>
-                            <span style="color: var(--cat-convert); font-size: 0.9rem; font-weight: bold;">${ImageUtils.formatSize(blob.size)}</span>
-                            <button class="btn btn-sm btn-secondary" onclick="ImageUtils.downloadBlob(ConvertFromJpgTool.convertedResults[${i}].blob, '${newName}')">Download</button>
-                        </div>
-                    </div>
-                `;
+                // Safe DOM creation - prevents HTML injection
+                const item = document.createElement('div');
+                item.style.cssText = 'background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.style.cssText = 'font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;';
+                nameSpan.textContent = file.name; // SAFE
+                nameSpan.title = file.name;
+                
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'flex gap-12 items-center';
+                
+                const badge = document.createElement('span');
+                badge.style.cssText = 'color: var(--text-muted); font-size: 0.8rem; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px;';
+                badge.textContent = `JPG → ${ext.toUpperCase()}`;
+                
+                const sizeSpan = document.createElement('span');
+                sizeSpan.style.cssText = 'color: var(--cat-convert); font-size: 0.9rem; font-weight: bold;';
+                sizeSpan.textContent = ImageUtils.formatSize(blob.size);
+                
+                const dlBtn = document.createElement('button');
+                dlBtn.className = 'btn btn-sm btn-secondary';
+                dlBtn.textContent = 'Download';
+                const curBlob = blob;
+                const curName = newName;
+                dlBtn.addEventListener('click', () => {
+                    ImageUtils.downloadBlob(curBlob, curName);
+                });
+                
+                rightDiv.appendChild(badge);
+                rightDiv.appendChild(sizeSpan);
+                rightDiv.appendChild(dlBtn);
+                
+                item.appendChild(nameSpan);
+                item.appendChild(rightDiv);
+                fileList.appendChild(item);
             } catch (e) {
                 console.error(e);
                 Toast.error(`Failed to convert ${file.name}`);
@@ -129,7 +213,6 @@ const ConvertFromJpgTool = {
     },
 
     destroy() {
-        this.files = [];
-        this.convertedResults = [];
+        this.resetTool();
     }
 };

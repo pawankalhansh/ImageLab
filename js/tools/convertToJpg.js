@@ -30,8 +30,19 @@ const ConvertToJpgTool = {
                                 <input type="range" id="c2j-quality" min="1" max="100" value="92">
                             </div>
 
+                            <div class="control-group">
+                                <div class="control-label">
+                                    <span>Background Fill (for transparent areas)</span>
+                                </div>
+                                <div class="flex gap-12 items-center mt-8">
+                                    <input type="color" id="c2j-bg-color" value="#ffffff" style="width: 44px; height: 36px; padding: 2px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-input); cursor: pointer;">
+                                    <span id="c2j-bg-color-label" style="font-size: 0.85rem; color: var(--text-muted); font-family: monospace;">#FFFFFF (White)</span>
+                                </div>
+                            </div>
+
                             <div class="actions-bar mt-24">
-                                <button id="c2j-btn" class="btn btn-primary w-full">Convert to JPG</button>
+                                <button id="c2j-btn" class="btn btn-primary w-full mb-12">Convert to JPG</button>
+                                <button id="c2j-reset-btn" class="btn btn-outline w-full">Reset / Change Images</button>
                             </div>
                         </div>
 
@@ -48,9 +59,11 @@ const ConvertToJpgTool = {
     },
 
     files: [],
+    convertedResults: [],
     
     init(config) {
         this.files = [];
+        this.convertedResults = [];
         const uploadZone = document.getElementById('c2j-upload-zone');
         const workspace = document.getElementById('c2j-workspace');
         
@@ -72,14 +85,51 @@ const ConvertToJpgTool = {
             qualityVal.textContent = `${e.target.value}%`;
         });
 
+        const colorInput = document.getElementById('c2j-bg-color');
+        const colorLabel = document.getElementById('c2j-bg-color-label');
+        if (colorInput && colorLabel) {
+            colorInput.addEventListener('input', (e) => {
+                colorLabel.textContent = e.target.value.toUpperCase();
+            });
+        }
+
         document.getElementById('c2j-btn').addEventListener('click', () => this.convertAll());
         document.getElementById('c2j-download-all').addEventListener('click', () => this.downloadAll());
+        document.getElementById('c2j-reset-btn').addEventListener('click', () => this.resetTool());
     },
 
-    convertedResults: [],
+    resetTool() {
+        this.files = [];
+        this.convertedResults = [];
+
+        const uploadZone = document.getElementById('c2j-upload-zone');
+        const workspace = document.getElementById('c2j-workspace');
+        const fileInput = document.getElementById('c2j-file-input');
+        const resultsContainer = document.getElementById('c2j-results');
+        const fileList = document.getElementById('c2j-file-list');
+
+        if (fileInput) fileInput.value = '';
+        if (fileList) fileList.innerHTML = '';
+        if (resultsContainer) resultsContainer.style.display = 'none';
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+
+        const btn = document.getElementById('c2j-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Convert to JPG';
+        }
+    },
 
     async convertAll() {
+        if (!this.files.length) {
+            Toast.error('No images to convert');
+            return;
+        }
+
         const quality = parseInt(document.getElementById('c2j-quality').value) / 100;
+        const bgColor = document.getElementById('c2j-bg-color') ? document.getElementById('c2j-bg-color').value : '#ffffff';
         const resultsContainer = document.getElementById('c2j-results');
         const fileList = document.getElementById('c2j-file-list');
         
@@ -98,9 +148,9 @@ const ConvertToJpgTool = {
                 const img = await ImageUtils.loadImage(file);
                 const { canvas, ctx } = ImageUtils.drawToCanvas(img, img.width, img.height);
                 
-                // Fill white background in case of transparent PNG/WebP before converting to JPG
+                // Fill matte background for transparent areas before converting to JPG
                 ctx.globalCompositeOperation = 'destination-over';
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = bgColor;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 const blob = await ImageUtils.canvasToBlob(canvas, 'image/jpeg', quality);
@@ -110,16 +160,42 @@ const ConvertToJpgTool = {
                 
                 const origExt = ImageUtils.getExtension(file.name).toUpperCase();
                 
-                fileList.innerHTML += `
-                    <div style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${file.name}</span>
-                        <div class="flex gap-12 items-center">
-                            <span style="color: var(--text-muted); font-size: 0.8rem; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px;">${origExt} → JPG</span>
-                            <span style="color: var(--cat-convert); font-size: 0.9rem; font-weight: bold;">${ImageUtils.formatSize(blob.size)}</span>
-                            <button class="btn btn-sm btn-secondary" onclick="ImageUtils.downloadBlob(ConvertToJpgTool.convertedResults[${i}].blob, '${newName}')">Download</button>
-                        </div>
-                    </div>
-                `;
+                // Safe DOM creation - prevents HTML injection
+                const item = document.createElement('div');
+                item.style.cssText = 'background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.style.cssText = 'font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;';
+                nameSpan.textContent = file.name; // SAFE
+                nameSpan.title = file.name;
+                
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'flex gap-12 items-center';
+                
+                const badge = document.createElement('span');
+                badge.style.cssText = 'color: var(--text-muted); font-size: 0.8rem; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px;';
+                badge.textContent = `${origExt} → JPG`;
+                
+                const sizeSpan = document.createElement('span');
+                sizeSpan.style.cssText = 'color: var(--cat-convert); font-size: 0.9rem; font-weight: bold;';
+                sizeSpan.textContent = ImageUtils.formatSize(blob.size);
+                
+                const dlBtn = document.createElement('button');
+                dlBtn.className = 'btn btn-sm btn-secondary';
+                dlBtn.textContent = 'Download';
+                const curBlob = blob;
+                const curName = newName;
+                dlBtn.addEventListener('click', () => {
+                    ImageUtils.downloadBlob(curBlob, curName);
+                });
+                
+                rightDiv.appendChild(badge);
+                rightDiv.appendChild(sizeSpan);
+                rightDiv.appendChild(dlBtn);
+                
+                item.appendChild(nameSpan);
+                item.appendChild(rightDiv);
+                fileList.appendChild(item);
             } catch (e) {
                 console.error(e);
                 Toast.error(`Failed to convert ${file.name}`);
@@ -139,7 +215,6 @@ const ConvertToJpgTool = {
     },
 
     destroy() {
-        this.files = [];
-        this.convertedResults = [];
+        this.resetTool();
     }
 };

@@ -21,6 +21,8 @@ const FiltersTool = {
                     <div class="tool-layout">
                         <div class="controls-panel">
                             <h3>Presets</h3>
+                            <div id="filters-file-info" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+                            
                             <div class="preset-group mb-16">
                                 <button class="preset-btn filter-preset active" data-preset="original">Original</button>
                                 <button class="preset-btn filter-preset" data-preset="grayscale">Grayscale</button>
@@ -73,8 +75,10 @@ const FiltersTool = {
                             </div>
 
                             <div class="actions-bar mt-24">
-                                <button id="flt-reset" class="btn btn-secondary w-full mb-16">Reset</button>
-                                <button id="flt-download" class="btn btn-primary w-full">Download Image</button>
+                                <button id="flt-download" class="btn btn-primary w-full mb-12">Download Image</button>
+                                <button id="flt-compare" class="btn btn-secondary w-full mb-12" title="Press and hold to preview original image">Hold to Compare Original</button>
+                                <button id="flt-reset" class="btn btn-secondary w-full mb-12">Reset Filters</button>
+                                <button id="flt-change-btn" class="btn btn-outline w-full">Change Image</button>
                             </div>
                         </div>
 
@@ -105,6 +109,8 @@ const FiltersTool = {
     currentFilters: {},
 
     init(config) {
+        this.file = null;
+        this.originalImg = null;
         this.currentFilters = { ...this.presets.original };
         
         setupUploadZone('filters-upload-zone', 'filters-file-input', async (files) => {
@@ -115,6 +121,12 @@ const FiltersTool = {
                     this.canvas = document.getElementById('filters-canvas');
                     this.ctx = this.canvas.getContext('2d');
                     
+                    const fileInfo = document.getElementById('filters-file-info');
+                    if (fileInfo) {
+                        fileInfo.textContent = `${this.file.name} (${this.originalImg.width} × ${this.originalImg.height}px)`;
+                        fileInfo.title = this.file.name;
+                    }
+
                     document.getElementById('filters-upload-zone').classList.add('hidden');
                     document.getElementById('filters-workspace').classList.add('active');
                     this.canvas.style.display = 'block';
@@ -123,7 +135,9 @@ const FiltersTool = {
                     this.canvas.height = this.originalImg.height;
                     
                     this.applyFilters();
+                    Toast.success('Image loaded successfully');
                 } catch (e) {
+                    console.error(e);
                     Toast.error('Failed to load image');
                 }
             }
@@ -133,13 +147,14 @@ const FiltersTool = {
         document.querySelectorAll('.filter-slider').forEach(slider => {
             slider.addEventListener('input', (e) => {
                 const id = e.target.id.replace('flt-', '');
-                this.currentFilters[id] = parseInt(e.target.value);
+                this.currentFilters[id] = parseInt(e.target.value) || 0;
                 
                 let unit = '%';
                 if (id === 'huerotate') unit = '°';
                 if (id === 'blur') unit = 'px';
                 
-                document.getElementById(`val-${id}`).textContent = `${e.target.value}${unit}`;
+                const valElem = document.getElementById(`val-${id}`);
+                if (valElem) valElem.textContent = `${e.target.value}${unit}`;
                 this.applyFilters();
                 
                 // Clear active preset
@@ -154,6 +169,7 @@ const FiltersTool = {
                 btn.classList.add('active');
                 
                 const preset = this.presets[e.target.dataset.preset];
+                if (!preset) return;
                 this.currentFilters = { ...preset };
                 
                 // Update sliders
@@ -164,7 +180,8 @@ const FiltersTool = {
                         let unit = '%';
                         if (key === 'huerotate') unit = '°';
                         if (key === 'blur') unit = 'px';
-                        document.getElementById(`val-${key}`).textContent = `${this.currentFilters[key]}${unit}`;
+                        const valElem = document.getElementById(`val-${key}`);
+                        if (valElem) valElem.textContent = `${this.currentFilters[key]}${unit}`;
                     }
                 });
                 
@@ -172,10 +189,36 @@ const FiltersTool = {
             });
         });
 
+        // Hold to compare original
+        const compareBtn = document.getElementById('flt-compare');
+        if (compareBtn) {
+            const showOriginal = (e) => {
+                if (e.cancelable) e.preventDefault();
+                if (!this.originalImg || !this.ctx || !this.canvas) return;
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.filter = 'none';
+                this.ctx.drawImage(this.originalImg, 0, 0);
+            };
+            const hideOriginal = (e) => {
+                if (e && e.cancelable) e.preventDefault();
+                this.applyFilters();
+            };
+
+            compareBtn.addEventListener('mousedown', showOriginal);
+            compareBtn.addEventListener('touchstart', showOriginal, { passive: false });
+            compareBtn.addEventListener('mouseup', hideOriginal);
+            compareBtn.addEventListener('mouseleave', hideOriginal);
+            compareBtn.addEventListener('touchend', hideOriginal);
+            compareBtn.addEventListener('touchcancel', hideOriginal);
+        }
+
         document.getElementById('flt-reset').addEventListener('click', () => {
-            document.querySelector('[data-preset="original"]').click();
+            const origBtn = document.querySelector('[data-preset="original"]');
+            if (origBtn) origBtn.click();
         });
+
         document.getElementById('flt-download').addEventListener('click', () => this.download());
+        document.getElementById('flt-change-btn').addEventListener('click', () => this.resetTool());
     },
 
     getFilterString() {
@@ -184,21 +227,52 @@ const FiltersTool = {
     },
 
     applyFilters() {
-        if (!this.originalImg) return;
+        if (!this.originalImg || !this.ctx || !this.canvas) return;
         
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.filter = this.getFilterString();
         this.ctx.drawImage(this.originalImg, 0, 0);
     },
 
+    resetTool() {
+        this.file = null;
+        this.originalImg = null;
+        this.currentFilters = { ...this.presets.original };
+
+        const uploadZone = document.getElementById('filters-upload-zone');
+        const workspace = document.getElementById('filters-workspace');
+        const fileInput = document.getElementById('filters-file-input');
+        const fileInfo = document.getElementById('filters-file-info');
+        const canvas = document.getElementById('filters-canvas');
+
+        if (fileInput) fileInput.value = '';
+        if (fileInfo) fileInfo.textContent = '';
+        if (canvas) {
+            canvas.style.display = 'none';
+            if (this.ctx) this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Reset sliders to default
+        const origBtn = document.querySelector('[data-preset="original"]');
+        if (origBtn) origBtn.click();
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+    },
+
     download() {
-        if (!this.originalImg) return;
+        if (!this.originalImg || !this.file || !this.canvas) {
+            Toast.error('Please upload an image first');
+            return;
+        }
         const newName = ImageUtils.getOutputFilename(this.file.name, 'filtered');
         ImageUtils.downloadCanvas(this.canvas, newName, this.file.type);
+        Toast.success('Filtered image downloaded!');
     },
 
     destroy() {
-        this.file = null;
-        this.originalImg = null;
+        this.resetTool();
+        this.canvas = null;
+        this.ctx = null;
     }
 };

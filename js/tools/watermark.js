@@ -80,7 +80,8 @@ const WatermarkTool = {
                             </div>
 
                             <div class="actions-bar mt-24">
-                                <button id="wm-download" class="btn btn-primary w-full">Download Image</button>
+                                <button id="wm-download" class="btn btn-primary w-full mb-12">Download Image</button>
+                                <button id="wm-reset" class="btn btn-secondary w-full">Reset / Change Image</button>
                             </div>
                         </div>
 
@@ -146,6 +147,21 @@ const WatermarkTool = {
         });
 
         document.getElementById('wm-download').addEventListener('click', () => this.download());
+        document.getElementById('wm-reset')?.addEventListener('click', () => this.reset());
+    },
+
+    reset() {
+        this.file = null;
+        this.originalImg = null;
+        if (this.canvas) {
+            this.canvas.style.display = 'none';
+        }
+        const uploadZone = document.getElementById('wm-upload-zone');
+        const workspace = document.getElementById('wm-workspace');
+        const fileInput = document.getElementById('wm-file-input');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+        if (workspace) workspace.classList.remove('active');
+        if (fileInput) fileInput.value = '';
     },
 
     draw() {
@@ -219,7 +235,8 @@ const WatermarkTool = {
     },
 
     destroy() {
-        this.file = null;
-        this.originalImg = null;
+        this.reset();
+        this.canvas = null;
+        this.ctx = null;
     }
 };

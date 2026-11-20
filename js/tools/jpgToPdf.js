@@ -39,13 +39,19 @@ const JpgToPdfTool = {
                             </div>
                             
                             <div class="actions-bar mt-24" style="flex-direction: column;">
-                                <button id="j2p-reset-btn" class="btn btn-outline w-full mb-12">Clear Images</button>
+                                <button id="j2p-reset-btn" class="btn btn-secondary w-full mb-12">Reset / Change Images</button>
                                 <button id="j2p-download-btn" class="btn btn-success w-full">Download PDF</button>
                             </div>
                         </div>
 
                         <div class="preview-container flex-col" style="align-items: stretch; justify-content: flex-start;">
-                            <h3 class="mb-12">Selected Images (<span id="j2p-count">0</span>)</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="margin: 0;">Selected Images (<span id="j2p-count">0</span>)</h3>
+                                <div class="btn btn-sm btn-secondary" style="position: relative; overflow: hidden; font-size: 0.8rem; padding: 4px 10px;">
+                                    + Add More
+                                    <input type="file" id="j2p-add-more-input" accept="image/jpeg,image/png,image/webp" multiple style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                                </div>
+                            </div>
                             <div id="j2p-image-list" class="grid gap-12" style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); width: 100%;">
                             </div>
                             
@@ -81,14 +87,21 @@ const JpgToPdfTool = {
         });
 
         document.getElementById('j2p-reset-btn').addEventListener('click', () => {
-            this.clearPreviews();
-            this.files = [];
-            document.getElementById('j2p-workspace').classList.remove('active');
-            document.getElementById('j2p-upload-zone').classList.remove('hidden');
-            document.getElementById('j2p-file-input').value = '';
-            document.getElementById('j2p-count').textContent = '0';
-            document.getElementById('j2p-image-list').innerHTML = '';
+            this.reset();
         });
+
+        const addMoreInput = document.getElementById('j2p-add-more-input');
+        if (addMoreInput) {
+            addMoreInput.addEventListener('change', (e) => {
+                const moreImages = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                if (moreImages.length > 0) {
+                    this.files = this.files.concat(moreImages);
+                    this.renderPreviews();
+                    Toast.success(`Added ${moreImages.length} more image(s)`);
+                }
+                e.target.value = '';
+            });
+        }
 
         document.getElementById('j2p-margin').addEventListener('input', (e) => {
             document.getElementById('j2p-margin-val').textContent = `${e.target.value} px`;
@@ -97,6 +110,21 @@ const JpgToPdfTool = {
         document.getElementById('j2p-download-btn').addEventListener('click', () => {
             this.generatePdf();
         });
+    },
+
+    reset() {
+        this.clearPreviews();
+        this.files = [];
+        const workspace = document.getElementById('j2p-workspace');
+        const uploadZone = document.getElementById('j2p-upload-zone');
+        const fileInput = document.getElementById('j2p-file-input');
+        const count = document.getElementById('j2p-count');
+        const imageList = document.getElementById('j2p-image-list');
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
+        if (fileInput) fileInput.value = '';
+        if (count) count.textContent = '0';
+        if (imageList) imageList.innerHTML = '';
     },
 
     clearPreviews() {
@@ -242,7 +270,6 @@ const JpgToPdfTool = {
     },
 
     destroy() {
-        this.clearPreviews();
-        this.files = [];
+        this.reset();
     }
 };

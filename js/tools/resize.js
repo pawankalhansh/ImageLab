@@ -21,6 +21,7 @@ const ResizeTool = {
                     <div class="tool-layout">
                         <div class="controls-panel">
                             <h3>Dimensions</h3>
+                            <div id="resize-file-info" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
                             
                             <div class="control-group">
                                 <div class="controls-row" style="margin-bottom: 12px;">
@@ -51,8 +52,18 @@ const ResizeTool = {
                                 </div>
                             </div>
 
+                            <div class="control-group mt-16">
+                                <div class="control-label">Standard Dimensions</div>
+                                <div class="preset-group">
+                                    <button class="preset-btn resize-dim" data-w="1080" data-h="1080">1080 × 1080</button>
+                                    <button class="preset-btn resize-dim" data-w="1920" data-h="1080">1920 × 1080</button>
+                                    <button class="preset-btn resize-dim" data-w="1280" data-h="720">1280 × 720</button>
+                                </div>
+                            </div>
+
                             <div class="actions-bar mt-24">
-                                <button id="resize-btn" class="btn btn-primary w-full">Resize Image</button>
+                                <button id="resize-btn" class="btn btn-primary w-full mb-12">Resize Image</button>
+                                <button id="resize-reset-btn" class="btn btn-outline w-full">Change Image</button>
                             </div>
                         </div>
 
@@ -70,6 +81,10 @@ const ResizeTool = {
     aspectRatio: 1,
     
     init(config) {
+        this.file = null;
+        this.originalImg = null;
+        this.aspectRatio = 1;
+
         setupUploadZone('resize-upload-zone', 'resize-file-input', async (files) => {
             if (files.length > 0) {
                 this.file = files[0];
@@ -77,6 +92,12 @@ const ResizeTool = {
                     this.originalImg = await ImageUtils.loadImage(this.file);
                     this.aspectRatio = this.originalImg.width / this.originalImg.height;
                     
+                    const fileInfo = document.getElementById('resize-file-info');
+                    if (fileInfo) {
+                        fileInfo.textContent = `${this.file.name} (${this.originalImg.width} × ${this.originalImg.height}px)`; // SAFE textContent
+                        fileInfo.title = this.file.name;
+                    }
+
                     document.getElementById('resize-width').value = this.originalImg.width;
                     document.getElementById('resize-height').value = this.originalImg.height;
                     
@@ -84,7 +105,9 @@ const ResizeTool = {
                     
                     document.getElementById('resize-upload-zone').classList.add('hidden');
                     document.getElementById('resize-workspace').classList.add('active');
+                    Toast.success('Image loaded successfully');
                 } catch (e) {
+                    console.error(e);
                     Toast.error('Failed to load image');
                 }
             }
@@ -95,54 +118,97 @@ const ResizeTool = {
         const aspectToggle = document.getElementById('resize-aspect');
 
         widthInput.addEventListener('input', () => {
-            if (aspectToggle.checked && widthInput.value) {
-                heightInput.value = Math.round(widthInput.value / this.aspectRatio);
+            if (aspectToggle.checked && widthInput.value && this.aspectRatio) {
+                heightInput.value = Math.max(1, Math.round(widthInput.value / this.aspectRatio));
             }
         });
 
         heightInput.addEventListener('input', () => {
-            if (aspectToggle.checked && heightInput.value) {
-                widthInput.value = Math.round(heightInput.value * this.aspectRatio);
+            if (aspectToggle.checked && heightInput.value && this.aspectRatio) {
+                widthInput.value = Math.max(1, Math.round(heightInput.value * this.aspectRatio));
             }
         });
 
         aspectToggle.addEventListener('change', () => {
-            if (aspectToggle.checked && widthInput.value) {
-                heightInput.value = Math.round(widthInput.value / this.aspectRatio);
+            if (aspectToggle.checked && widthInput.value && this.aspectRatio) {
+                heightInput.value = Math.max(1, Math.round(widthInput.value / this.aspectRatio));
             }
         });
 
         document.querySelectorAll('.resize-pct').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (!this.originalImg) return;
                 const scale = parseFloat(e.target.dataset.val);
-                widthInput.value = Math.round(this.originalImg.width * scale);
-                heightInput.value = Math.round(this.originalImg.height * scale);
+                widthInput.value = Math.max(1, Math.round(this.originalImg.width * scale));
+                heightInput.value = Math.max(1, Math.round(this.originalImg.height * scale));
                 if (!aspectToggle.checked) aspectToggle.checked = true;
             });
         });
 
+        document.querySelectorAll('.resize-dim').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (!this.originalImg) return;
+                widthInput.value = parseInt(e.target.dataset.w);
+                heightInput.value = parseInt(e.target.dataset.h);
+                aspectToggle.checked = false;
+            });
+        });
+
         document.getElementById('resize-btn').addEventListener('click', () => this.processResize());
+        document.getElementById('resize-reset-btn').addEventListener('click', () => this.resetTool());
+    },
+
+    resetTool() {
+        this.file = null;
+        this.originalImg = null;
+        this.aspectRatio = 1;
+
+        const uploadZone = document.getElementById('resize-upload-zone');
+        const workspace = document.getElementById('resize-workspace');
+        const fileInput = document.getElementById('resize-file-input');
+        const canvas = document.getElementById('resize-canvas');
+        const fileInfo = document.getElementById('resize-file-info');
+        const widthInput = document.getElementById('resize-width');
+        const heightInput = document.getElementById('resize-height');
+
+        if (fileInput) fileInput.value = '';
+        if (fileInfo) fileInfo.textContent = '';
+        if (widthInput) widthInput.value = '';
+        if (heightInput) heightInput.value = '';
+
+        if (canvas) {
+            canvas.style.display = 'none';
+            const ctx = canvas.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        if (workspace) workspace.classList.remove('active');
+        if (uploadZone) uploadZone.classList.remove('hidden');
     },
 
     updatePreview() {
+        if (!this.originalImg) return;
         const canvas = document.getElementById('resize-canvas');
+        if (!canvas) return;
         canvas.style.display = 'block';
         const ctx = canvas.getContext('2d');
         
-        // For preview, draw original image. Canvas CSS object-fit will handle display.
         canvas.width = this.originalImg.width;
         canvas.height = this.originalImg.height;
         ctx.drawImage(this.originalImg, 0, 0);
     },
 
     processResize() {
-        if (!this.originalImg) return;
+        if (!this.originalImg || !this.file) {
+            Toast.error('Please upload an image first');
+            return;
+        }
         
         const w = parseInt(document.getElementById('resize-width').value);
         const h = parseInt(document.getElementById('resize-height').value);
         
         if (!w || !h || w <= 0 || h <= 0) {
-            Toast.error('Invalid dimensions');
+            Toast.error('Please enter valid positive dimensions');
             return;
         }
 
@@ -153,7 +219,6 @@ const ResizeTool = {
     },
 
     destroy() {
-        this.file = null;
-        this.originalImg = null;
+        this.resetTool();
     }
 };

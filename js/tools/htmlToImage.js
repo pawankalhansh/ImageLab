@@ -33,9 +33,12 @@ const HtmlToImageTool = {
                         <div class="editor-col">
                             <div class="control-label" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span>HTML & CSS Code</span>
-                                <div class="btn btn-sm btn-secondary" style="position: relative; overflow: hidden; font-size: 0.8rem; padding: 4px 8px;">
-                                    Upload .html
-                                    <input type="file" id="h2i-file-upload" accept=".html,.htm" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="h2i-reset-btn" class="btn btn-sm btn-secondary" style="font-size: 0.8rem; padding: 4px 8px;">Reset Code</button>
+                                    <div class="btn btn-sm btn-secondary" style="position: relative; overflow: hidden; font-size: 0.8rem; padding: 4px 8px;">
+                                        Upload .html
+                                        <input type="file" id="h2i-file-upload" accept=".html,.htm" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                                    </div>
                                 </div>
                             </div>
                             <textarea id="h2i-code" spellcheck="false">&lt;div class="card"&gt;
@@ -78,36 +81,68 @@ p { margin: 0; color: #666; font-size: 1.2rem; }
                     </div>
                 </div>
             </div>
-            
-            <!-- html2canvas dependency -->
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
         `;
     },
+
+    defaultCode: `<div class="card">
+  <h1>Hello ImageLab</h1>
+  <p>This is rendered from HTML/CSS into an image.</p>
+</div>
+
+<style>
+body { 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  margin: 0; 
+  height: 100vh;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  font-family: system-ui, sans-serif;
+}
+.card {
+  background: white;
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  text-align: center;
+}
+h1 { margin: 0 0 10px; color: #111; }
+p { margin: 0; color: #666; font-size: 1.2rem; }
+</style>`,
 
     iframe: null,
     resultCanvas: null,
 
+    async ensureHtml2Canvas() {
+        if (typeof window.html2canvas === 'function') return window.html2canvas;
+        const cdnUrls = [
+            'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+            'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+        ];
+        for (const url of cdnUrls) {
+            try {
+                await loadScript(url);
+                if (typeof window.html2canvas === 'function') return window.html2canvas;
+            } catch (e) {
+                console.warn('Failed to load html2canvas from:', url, e);
+            }
+        }
+        if (typeof window.html2canvas !== 'function') {
+            throw new Error('html2canvas library failed to load');
+        }
+        return window.html2canvas;
+    },
+
     init(config) {
         this.iframe = document.getElementById('h2i-iframe');
         
-        // Dynamically load html2canvas if not present
-        if (typeof html2canvas === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            document.head.appendChild(script);
-        }
+        // Preload html2canvas asynchronously
+        this.ensureHtml2Canvas().catch(() => {});
 
         const codeInput = document.getElementById('h2i-code');
-        const updateIframe = () => {
-            const code = codeInput.value;
-            const doc = this.iframe.contentWindow.document;
-            doc.open();
-            doc.write(code);
-            doc.close();
-        };
-
+        
         // Update iframe live
-        codeInput.addEventListener('input', () => updateIframe());
+        codeInput.addEventListener('input', () => this.updateIframe());
         
         // Handle file upload
         const fileUpload = document.getElementById('h2i-file-upload');
@@ -117,7 +152,7 @@ p { margin: 0; color: #666; font-size: 1.2rem; }
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     codeInput.value = ev.target.result;
-                    updateIframe();
+                    this.updateIframe();
                     Toast.success('HTML file loaded successfully');
                 };
                 reader.readAsText(file);
@@ -125,27 +160,41 @@ p { margin: 0; color: #666; font-size: 1.2rem; }
             e.target.value = ''; // Reset input
         });
 
+        // Reset button
+        document.getElementById('h2i-reset-btn')?.addEventListener('click', () => this.reset());
+
         // Initial render
-        setTimeout(updateIframe, 100);
+        setTimeout(() => this.updateIframe(), 100);
 
         document.getElementById('h2i-capture').addEventListener('click', () => this.capture());
         document.getElementById('h2i-download').addEventListener('click', () => this.download());
     },
 
-    async capture() {
-        if (typeof html2canvas === 'undefined') {
-            Toast.error('Library still loading, please try again in a moment');
-            return;
+    updateIframe() {
+        if (!this.iframe || !this.iframe.contentWindow) return;
+        const codeInput = document.getElementById('h2i-code');
+        if (!codeInput) return;
+        const code = codeInput.value;
+        try {
+            const doc = this.iframe.contentWindow.document;
+            doc.open();
+            doc.write(code);
+            doc.close();
+        } catch (e) {
+            console.warn('Failed to update iframe:', e);
         }
+    },
 
+    async capture() {
         const btn = document.getElementById('h2i-capture');
         btn.disabled = true;
         btn.textContent = 'Capturing...';
 
         try {
+            const html2canvas = await this.ensureHtml2Canvas();
             const doc = this.iframe.contentWindow.document;
-            const w = parseInt(document.getElementById('h2i-width').value);
-            const h = parseInt(document.getElementById('h2i-height').value);
+            const w = parseInt(document.getElementById('h2i-width').value) || 800;
+            const h = parseInt(document.getElementById('h2i-height').value) || 600;
 
             // Temporarily resize iframe to match requested capture size
             const oldW = this.iframe.style.width;
@@ -173,11 +222,23 @@ p { margin: 0; color: #666; font-size: 1.2rem; }
 
         } catch (e) {
             console.error(e);
-            Toast.error('Failed to capture HTML');
+            Toast.error('Failed to capture HTML: ' + (e.message || e));
         } finally {
             btn.disabled = false;
             btn.textContent = 'Capture Image';
         }
+    },
+
+    reset() {
+        const codeInput = document.getElementById('h2i-code');
+        if (codeInput) {
+            codeInput.value = this.defaultCode;
+            this.updateIframe();
+        }
+        const dlWrap = document.getElementById('h2i-download-wrap');
+        if (dlWrap) dlWrap.style.display = 'none';
+        this.resultCanvas = null;
+        Toast.info('Editor reset to default template');
     },
 
     download() {
@@ -189,5 +250,6 @@ p { margin: 0; color: #666; font-size: 1.2rem; }
 
     destroy() {
         this.resultCanvas = null;
+        this.iframe = null;
     }
 };
